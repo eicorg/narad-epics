@@ -17,6 +17,8 @@ narad-epics/
 |-- yaml-descriptions/  # Narad YAML lattice descriptions
 |-- iocs/               # Narad-to-EPICS translation and IOC utilities
 |-- models/             # Physics modeling code and related data structures
+|-- tests/              # Translation-toolkit tests and reference validation
+|-- pyproject.toml      # Python metadata, dependencies, and Pixi tasks
 |-- README.md
 `-- .gitignore
 ```
@@ -32,6 +34,29 @@ narad-epics/
 - `models/` contains the physics-modeling parts of the project. It is separate
 	from IOC translation so lattice and beam-physics logic do not become coupled
 	to EPICS database generation.
+- `tests/` verifies the translation toolkit with compact fixtures and the full
+	toy-ring description.
+
+## Development environment
+
+The project uses [Pixi](https://pixi.sh/) to provide a reproducible Python
+environment on Windows, Linux, and macOS. Install the environment and run all
+checks from the repository root:
+
+```powershell
+pixi install
+pixi run check
+```
+
+Run only the tests with:
+
+```powershell
+pixi run test
+```
+
+Dependencies and routine development commands belong in `pyproject.toml`. The
+generated `pixi.lock` file should be committed so local development and CI use
+the same resolved packages.
 
 ## Toy ring description
 
