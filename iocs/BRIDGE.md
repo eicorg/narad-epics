@@ -1,103 +1,153 @@
-# softIoc and PyTao bridge
+# softIocPVA and PyTao model service
 
-Install EPICS Base with `softIoc`, `caget`, and `caput` available on `PATH`.
-For a source installation, add its platform-specific `bin` directory to `PATH`:
+The IOC owns the EPICS records. A separate Python process uses p4p to monitor
+setpoints over PVAccess, applies changes to one persistent Tao model, and writes
+model-derived readbacks back through PVAccess. There is no Channel Access or
+intermediate TCP model server in this runtime.
+
+## Prerequisites
+
+- EPICS Base with `softIocPVA`, `pvget`, and `pvput` on `PATH`.
+- Pixi and the checked `simulation` environment, which contains p4p and PyTao.
+- A Bmad/libtao installation usable by PyTao.
+
+If PyTao cannot locate Tao, set `PYTAO_LIB_PATH` to the actual `libtao` shared
+library supplied by the Bmad installation.
+
+Install the locked Pixi environment with:
+
+```sh
+pixi install -e simulation
+```
+
+Alternatively, when Bmad supplies the active Python environment, install this
+project and its simulation extra into that environment:
+
+```sh
+python -m pip install -e ".[simulation]"
+```
+
+`pyproject.toml` is the single source for Python dependencies: the base project
+requires PyYAML, and the `simulation` extra adds p4p and PyTao. `softIocPVA` and
+the native `libtao` shared library are external prerequisites; pip and Pixi do
+not install those EPICS Base and Bmad runtime components for this project.
+
+If PyTao cannot locate Tao, set `PYTAO_LIB_PATH` to the actual `libtao` shared
+library supplied by the Bmad installation.
+
+For a source installation of EPICS Base, add its platform-specific binary
+directory to `PATH`:
 
 ```sh
 export EPICS_BASE="/path/to/epics-base"
 export PATH="$EPICS_BASE/bin/<host-architecture>:$PATH"
 ```
 
-Replace the placeholders with your installation directory and EPICS host
-architecture. The examples below use POSIX shell syntax and run from the
-`narad-epics` repository root.
+## Run on Linux
 
-## Python dependencies
+Open two terminals in the `narad-epics` repository root.
 
-Activate a Python environment with Bmad/libtao available, then install the
-project with its bridge extra and the model requirements:
+If needed, make the Bmad shared library explicit in both the model-service and
+live-check shells:
 
 ```sh
-python -m pip install -e '.[bridge]'
-python -m pip install -r models/requirements-pv.txt
+export PYTAO_LIB_PATH="/path/to/bmad/lib/libtao.so"
 ```
 
-If PyTao cannot discover libtao automatically, set `PYTAO_LIB_PATH` to the
-shared library in your Bmad installation. For example, on macOS:
-
-```sh
-export PYTAO_LIB_PATH="/path/to/bmad/lib/libtao.dylib"
-```
-
-On Linux, use the corresponding `libtao.so` path. Make this environment variable
+Use the corresponding `libtao.so` path. Make this environment variable
 available in the model terminal and when running the live check.
 
-## Run
-
-In the IOC terminal:
-
 ```sh
-export EPICS_CAS_INTF_ADDR_LIST=127.0.0.1
-softIoc -d generated/toy_ring.db
+softIocPVA -d generated/toy_ring.db
 ```
 
-In the model terminal:
+Terminal 2, start the persistent Tao model service:
 
 ```sh
-python models/pv_server.py
+pixi run -e simulation narad-epics-model-service
 ```
 
-In the bridge terminal:
+Or, from an active environment where `.[simulation]` was installed:
 
 ```sh
-export EPICS_CA_ADDR_LIST=127.0.0.1
-export EPICS_CA_AUTO_ADDR_LIST=NO
-python -m iocs.ca_bridge
+python -m iocs.pva_bridge
 ```
 
-Wait for `Bridge ready: 384 setpoints, 768 readbacks`. The installed package also
-exposes `narad-epics-bridge`. Options are `--source`, `--model-host`, and
-`--model-port`; defaults select the checked toy-ring YAML and 127.0.0.1:8765.
-
-From a fourth terminal, with the same CA client environment:
+To use another lattice:
 
 ```sh
-export EPICS_CA_ADDR_LIST=127.0.0.1
-export EPICS_CA_AUTO_ADDR_LIST=NO
-caput inst:es12-t1:PS:H:Current-SP 0.01
-# Wait for the bridge's "Forwarded ...; published 768 readbacks" message.
-caget inst:es12-t1:PS:H:Current-RB inst:es12-bpm0:X-RB
-caput inst:es12-t1:PS:H:Current-SP 0
+pixi run -e simulation narad-epics-model-service /path/to/ring.bmad
 ```
 
-## Current behavior
+Pure Python:
 
-The bridge maps the YAML's explicit numeric signals through their component
-bindings. It subscribes to 384 current setpoints. Each subsequent setpoint
-change sends a JSON `set` to the model, then reads and publishes all 384 current
-readbacks and all 384 BPM coordinates through Channel Access. Current units
-remain A; BPM meters are multiplied by 1000 for EPICS mm. Readbacks use actual
-model `get` results rather than copying the command. The model TCP connection
-is released after each event's readbacks so other model clients can connect.
+```sh
+python -m iocs.pva_bridge /path/to/ring.bmad
+```
 
-The initial CA subscription value is ignored. There is no initial setpoint
-replay or readback refresh; IOC values remain their database defaults until a
-setpoint change is handled. Readbacks update only after a setpoint event;
-changes made directly to the model are visible after the next such event.
-A completed `caput` confirms the IOC write; use the bridge completion message
-or readbacks to check that model processing has finished.
+From the parent directory, identify the project manifest explicitly:
 
-No polling, startup synchronization, status generation, alarm handling, or
-custom reconnection logic is implemented. The 384 status records are untouched.
-An exception in model forwarding/readback publication terminates the bridge.
-The checked database and its generator are unchanged.
+```sh
+pixi run -e simulation --manifest-path narad-epics/pyproject.toml \
+	narad-epics-model-service
+```
+
+Wait for `Model service ready: 384 setpoints, 768 readbacks`.
+
+## Verify
+
+From another terminal:
+
+```sh
+pvput inst:es12-t1:PS:H:Current-SP 0.01
+pvget inst:es12-t1:PS:H:Current-RB inst:es12-bpm0:X-RB
+pvput inst:es12-t1:PS:H:Current-SP 0
+```
+
+`pvput` confirms the IOC write. Wait for the service's `Forwarded ...;
+published 768 readbacks` log or read the output PVs to confirm that Tao has
+processed the update.
+
+## Runtime behavior
+
+The service derives its mapping from the Narad YAML component bindings. It
+connects to all 1,152 numeric IOC PVs and creates p4p monitors for 384 current
+setpoints. p4p callbacks only enqueue updates; one worker serializes all access
+to the single Tao instance.
+
+For each changed setpoint, the worker:
+
+1. Sets the matching Tao steering current.
+2. Lets Tao recalculate the closed orbit.
+3. Reads all 384 model current values and all 384 BPM coordinates.
+4. Publishes all 768 EPICS readbacks with one p4p batch put.
+
+Current units remain A. Tao BPM positions are in meters, so the service
+multiplies them by 1000 before writing EPICS records declared in millimeters.
+
+The first value delivered by each monitor is ignored. Existing IOC setpoints
+are not replayed into Tao at startup, and readbacks remain at database defaults
+until a setpoint changes. Status records remain `UNKNOWN`. There is no polling,
+status generation, alarm handling, persistence, or current-limit enforcement.
+An individual failed update is logged and the service continues monitoring.
+
+## Network discovery
+
+Localhost normally requires no extra configuration. For an IOC on another
+host, configure the usual PVA discovery variables before starting the service:
+
+```sh
+export EPICS_PVA_ADDR_LIST="127.0.0.1"
+export EPICS_PVA_AUTO_ADDR_LIST=YES
+```
 
 ## Validation
 
-Validation with EPICS Base R7.0.11 and caproto 1.3.0 loaded `generated/toy_ring.db` successfully. A live test
-connected all 1,152 numeric PVs and a representative status PV, forwarded
-horizontal 0.01 A and vertical -0.02 A, and compared all 768 readbacks with
-PyTao. Example values with both currents applied:
+Validation with EPICS Base R7.0.11 loaded `generated/toy_ring.db` in
+`softIocPVA` successfully. A live p4p test connected all 1,152 numeric PVs and
+a representative status PV, forwarded horizontal 0.01 A and vertical -0.02 A,
+and compared all 768 readbacks with PyTao. Example values with both currents
+applied:
 
 | BPM | Model m | EPICS mm |
 | --- | ---: | ---: |
@@ -106,16 +156,38 @@ PyTao. Example values with both currents applied:
 
 Both currents were restored to zero and the resulting readbacks again matched
 the model. Status remained `UNKNOWN`. Test services were stopped afterward.
-All 18 unit tests passed, including mapping, conversion, and failed-set checks.
 
-To repeat the opt-in live check (starts and stops its own processes on loopback
-CA ports 15064/15065 and model port 18765):
+Unit coverage verifies the full signal inventory, p4p callback-to-worker flow,
+model-confirmed readback publication, failed-set behavior, and BPM conversion.
+Run it with:
 
 ```sh
-python tests/check_live_bridge.py
+pixi run check
+```
+
+Without Pixi, compile and run the same standard-library test suite from the
+repository root:
+
+```sh
+python -m compileall -q iocs models tests
+python -m unittest discover -s tests -v
+```
+
+The opt-in live check starts and stops its own `softIocPVA` and model-service
+processes, then compares all 768 EPICS readbacks with an independent Tao model:
+
+```sh
+pixi run -e simulation python tests/check_live_pva.py
+```
+
+From an active Python environment with `.[simulation]` installed, invoke the
+checker directly:
+
+```sh
+python tests/check_live_pva.py
 ```
 
 Set `EPICS_BASE` to your EPICS installation before running the checker; it
-locates `softIoc` under `$EPICS_BASE/bin/`. Run it in the Python environment
+locates `softIocPVA` under `$EPICS_BASE/bin/`. Run it in the Python environment
 with PyTao and the bridge dependencies installed. Test logs are retained in
 the temporary directory printed by the checker.

@@ -32,7 +32,7 @@ facility:
     quantity_kind: BeamPosition
     native_data_type: Float
     native_unit: mm
-    access_protocol: EPICS Channel Access
+    access_protocol: EPICS PVAccess
   - id: inst:t1:PS:H:Current-SP
     kind: Signal
     alias: [horizontal_current_setpoint]
@@ -43,7 +43,7 @@ facility:
     quantity_kind: ElectricCurrent
     native_data_type: Float
     native_unit: A
-    access_protocol: EPICS Channel Access
+    access_protocol: EPICS PVAccess
   - id: inst:t1:PS:H:Status
     kind: Signal
     alias: [horizontal_magnet_status]
@@ -54,7 +54,7 @@ facility:
     quantity_kind: State
     native_data_type: String
     native_unit: none
-    access_protocol: EPICS Channel Access
+    access_protocol: EPICS PVAccess
   signal_bindings:
   - id: inst:BPM1.horizontal_position_binding
     subject: inst:BPM1

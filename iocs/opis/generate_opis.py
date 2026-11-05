@@ -108,7 +108,7 @@ def build_rows(source: Path) -> tuple[EmbeddedRow, ...]:
             ("COMPONENT", component_id.removeprefix("inst:")),
             ("KIND", component_kind),
             *(
-                (macro_name, signal_by_suffix[suffix])
+                (macro_name, f"pva://{signal_by_suffix[suffix]}")
                 for macro_name, suffix in macro_suffixes.items()
             ),
         )

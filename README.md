@@ -47,30 +47,58 @@ narad-epics/
 
 ## Development environment
 
-The project uses [Pixi](https://pixi.sh/) to provide a reproducible Python
-environment on Windows, Linux, and macOS. Install the environment and run all
-checks from the repository root:
+The project uses [Pixi](https://pixi.sh/) to provide a reproducible Linux Python
+environment. Install the environment and run all checks from the repository
+root:
 
-```powershell
+```sh
 pixi install
 pixi run check
 ```
 
 Run only the tests with:
 
-```powershell
+```sh
 pixi run test
 ```
 
+The direct Python equivalent is:
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+## Run the PVA simulation
+
+Run the IOC and persistent Tao model service in separate terminals from the
+repository root:
+
+```sh
+softIocPVA -d generated/toy_ring.db
+pixi run -e simulation narad-epics-model-service
+```
+
+After `python -m pip install -e ".[simulation]"`, the model service can also be
+started without Pixi:
+
+```sh
+python -m iocs.pva_bridge
+```
+
+The service uses p4p to monitor all 384 setpoint PVs over PVAccess and publishes
+768 model-derived current and BPM readbacks. See
+[`iocs/BRIDGE.md`](iocs/BRIDGE.md) for the full startup, discovery, behavior,
+and live-validation guide.
+
 Regenerate the checked toy-ring database with:
 
-```powershell
+```sh
 pixi run generate-toy-ring
 ```
 
 Regenerate the top-level Phoebus display from the same description with:
 
-```powershell
+```sh
 pixi run generate-toy-ring-opis
 ```
 
@@ -78,7 +106,8 @@ Open `iocs/opis/toy_ring_overview.bob` in Phoebus Display Builder. Its 384
 rows follow lattice source order and use Embedded Display widgets to load
 `rows/bpm_row.bob` or `rows/kicker_row.bob`. Each embedded instance passes the
 component label, type, and exact PV names as macros. Start an IOC that loads
-`generated/toy_ring.db` before connecting the display to Channel Access.
+`generated/toy_ring.db` with `softIocPVA` before opening the display. Generated
+PV macros use the explicit `pva://` provider.
 
 Dependencies and routine development commands belong in `pyproject.toml`. The
 generated `pixi.lock` file should be committed so local development and CI use
@@ -126,7 +155,7 @@ description. For example:
 	quantity_kind: BeamPosition
 	native_data_type: Float
 	native_unit: mm
-	access_protocol: EPICS Channel Access
+	access_protocol: EPICS PVAccess
 ```
 
 A binding connects a component (`subject`) to a signal (`object`). The
@@ -255,18 +284,18 @@ input produces stable output.
 
 Generate a database from a Narad description with the installed command:
 
-```powershell
-pixi run narad-epics-generate `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+pixi run narad-epics-generate \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--output generated/toy_ring.db
 ```
 
 Validate parsing, references, mappings, record names, and aliases without
 writing a file:
 
-```powershell
-pixi run narad-epics-generate `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+pixi run narad-epics-generate \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--check
 ```
 
@@ -275,23 +304,33 @@ pixi run narad-epics-generate `
 Pixi is not required at runtime. From the repository root, install the project
 and its dependencies into the active Python environment:
 
-```powershell
+```sh
 python -m pip install -e .
 ```
 
+For the PVAccess Tao model service, install the optional simulation
+dependencies as well:
+
+```sh
+python -m pip install -e ".[simulation]"
+```
+
+This installs p4p and PyTao. EPICS Base (`softIocPVA`) and Bmad's native
+`libtao` shared library must still be installed separately.
+
 Generate the database through the Python module entry point:
 
-```powershell
-python -m iocs.generate_db `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+python -m iocs.generate_db \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--output generated/toy_ring.db
 ```
 
 Run validation without writing a database:
 
-```powershell
-python -m iocs.generate_db `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+python -m iocs.generate_db \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--check
 ```
 

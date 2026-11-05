@@ -1,52 +1,59 @@
 # PyTao toy-ring model
 
-This directory contains the PyTao adapter (`pv_model.py`), JSON TCP server
-(`pv_server.py`), lattice (`toy_ring.bmad`), and Python requirements.
-The lattice is self-contained; no parent-directory files are needed at runtime.
-It models an illustrative 18 GeV electron ring with ideal closed-orbit BPMs and
-linear magnet-current calibrations, not measured hardware behavior.
+This directory contains the PyTao adapter (`pv_model.py`) and self-contained
+lattice (`toy_ring.bmad`). The lattice models an illustrative 18 GeV electron
+ring with ideal closed-orbit BPMs and linear magnet-current calibrations, not
+measured hardware behavior.
 
-From the repository root, in an environment with Bmad/libtao installed:
+The supported EPICS runtime starts the adapter through the p4p service in
+`../iocs/pva_bridge.py`:
 
 ```sh
-python -m pip install -r models/requirements-pv.txt
-python models/pv_server.py
+pixi install -e simulation
 ```
 
-The server defaults to `127.0.0.1:8765` and the adjacent `toy_ring.bmad`.
-Options: `--host`, `--port`, `--lattice`. PyTao must locate `libtao`; activate
-your Bmad environment and configure its library paths as required. The project's
-base translation-toolkit environment does not install Bmad or PyTao.
+When using a Python environment supplied by Bmad instead of Pixi:
 
-## Protocol
-
-UTF-8 JSON, one request and response per newline. Examples:
-
-```json
-{"op":"list"}
-{"op":"get","pv":"steering_h:i_es12_t1"}
-{"op":"set","pv":"steering_h:i_es12_t1","value":0.01}
-{"op":"get","pv":"es12_bpm0:x"}
+```sh
+python -m pip install -e ".[simulation]"
 ```
 
-Success: `{"ok":true,"result":...}`. Failure:
-`{"ok":false,"error":"..."}`. Names are lowercase and case-sensitive.
+```sh
+softIocPVA -d generated/toy_ring.db
+pixi run -e simulation narad-epics-model-service
+```
+
+With `.[simulation]` installed in the active Python environment, the equivalent
+model-service command is:
+
+```sh
+python -m iocs.pva_bridge
+```
+
+Run those commands in separate terminals from the repository root. PyTao must
+locate `libtao`; configure `PYTAO_LIB_PATH` when the Bmad installation is not
+discovered automatically.
+
+## Model API
+
+`RingModel` keeps one Tao instance in memory. Its API is deliberately small:
+
+- `list_pvs()` returns writable currents and read-only BPM model keys.
+- `get(key)` reads a current or closed-orbit coordinate.
+- `set(key, value)` applies a finite current and lets Tao recalculate.
+
 There are 384 steering currents, two quadrupole family currents, two sextupole
 family currents (all A), and 384 read-only BPM coordinates (m). Each current
 write triggers Tao's normal recalculation. Values persist in memory until exit.
 
-This is a custom TCP server, not an EPICS IOC. It serves one connection at a
-time; a bridge should serialize requests and close connections between batches
-so another client can connect. There are no subscriptions, authentication,
-current limits, transactions, or persistent settings. Keep it on loopback.
+## PVAccess connection
 
-## Channel Access connection
-
-The event-driven bridge is implemented in `../iocs/ca_bridge.py`. It forwards
-384 steering setpoints, publishes 384 current readbacks and 384 BPM coordinates,
-and converts BPM meters to EPICS millimeters. It uses the existing database
-without changes. See [the bridge run guide](../iocs/BRIDGE.md) for
-softIoc setup, startup commands, exact behavior, and live validation.
+The event-driven model service is implemented in `../iocs/pva_bridge.py`. It
+uses p4p to monitor 384 steering setpoints from `softIocPVA`, serializes Tao
+updates through one worker, publishes 384 current readbacks and 384 BPM
+coordinates, and converts BPM meters to EPICS millimeters. See
+[the service run guide](../iocs/BRIDGE.md) for startup commands, exact behavior,
+network discovery, and live validation.
 
 Quadrupole and sextupole family currents are exposed by the model but have no
 signals in the checked database. The bridge leaves status records untouched.
