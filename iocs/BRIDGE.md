@@ -1,9 +1,9 @@
-# softIocPVA and PyTao model service
+# softIocPVA and PyTao machine service
 
 The IOC owns the EPICS records. A separate Python process uses p4p to monitor
-setpoints over PVAccess, applies changes to one persistent Tao model, and writes
-model-derived readbacks back through PVAccess. There is no Channel Access or
-intermediate TCP model server in this runtime.
+setpoints over PVAccess, applies changes to one persistent Tao machine, and writes
+machine-derived readbacks back through PVAccess. There is no Channel Access or
+intermediate TCP machine server in this runtime.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ export PATH="$EPICS_BASE/bin/<host-architecture>:$PATH"
 
 Open two terminals in the `narad-epics` repository root.
 
-If needed, make the Bmad shared library explicit in both the model-service and
+If needed, make the Bmad shared library explicit in both the machine-service and
 live-check shells:
 
 ```sh
@@ -55,16 +55,16 @@ export PYTAO_LIB_PATH="/path/to/bmad/lib/libtao.so"
 ```
 
 Use the corresponding `libtao.so` path. Make this environment variable
-available in the model terminal and when running the live check.
+available in the machine terminal and when running the live check.
 
 ```sh
 softIocPVA -d generated/toy_ring.db
 ```
 
-Terminal 2, start the persistent Tao model service:
+Terminal 2, start the persistent Tao machine service:
 
 ```sh
-pixi run -e simulation narad-epics-model-service
+pixi run -e simulation narad-epics-machine-service
 ```
 
 Or, from an active environment where `.[simulation]` was installed:
@@ -76,7 +76,7 @@ python -m iocs.pva_bridge
 To use another lattice:
 
 ```sh
-pixi run -e simulation narad-epics-model-service /path/to/ring.bmad
+pixi run -e simulation narad-epics-machine-service /path/to/ring.bmad
 ```
 
 Pure Python:
@@ -89,10 +89,10 @@ From the parent directory, identify the project manifest explicitly:
 
 ```sh
 pixi run -e simulation --manifest-path narad-epics/pyproject.toml \
-	narad-epics-model-service
+	narad-epics-machine-service
 ```
 
-Wait for `Model service ready: 384 setpoints, 768 readbacks`.
+Wait for `Machine service ready: 384 setpoints, 768 readbacks`.
 
 ## Verify
 
@@ -119,11 +119,17 @@ For each changed setpoint, the worker:
 
 1. Sets the matching Tao steering current.
 2. Lets Tao recalculate the closed orbit.
-3. Reads all 384 model current values and all 384 BPM coordinates.
-4. Publishes all 768 EPICS readbacks with one p4p batch put.
+3. Reads all 384 machine current values and all 384 BPM coordinates.
+4. Adds independent zero-mean Gaussian readback noise and publishes all 768
+   EPICS readbacks with one p4p batch put.
 
 Current units remain A. Tao BPM positions are in meters, so the service
 multiplies them by 1000 before writing EPICS records declared in millimeters.
+After conversion, each BPM coordinate receives 0.1 mm RMS noise, and each
+current readback receives 0.01 A (10 mA) RMS noise. A fresh independent sample
+is drawn for every PV on each publication. Noise does not change setpoints,
+Tao calculations, or status records. Readbacks can fluctuate around zero;
+there is no clipping and no periodic noise refresh.
 
 The first value delivered by each monitor is ignored. Existing IOC setpoints
 are not replayed into Tao at startup, and readbacks remain at database defaults
@@ -143,22 +149,16 @@ export EPICS_PVA_AUTO_ADDR_LIST=YES
 
 ## Validation
 
-Validation with EPICS Base R7.0.11 loaded `generated/toy_ring.db` in
-`softIocPVA` successfully. A live p4p test connected all 1,152 numeric PVs and
-a representative status PV, forwarded horizontal 0.01 A and vertical -0.02 A,
-and compared all 768 readbacks with PyTao. Example values with both currents
-applied:
-
-| BPM | Model m | EPICS mm |
-| --- | ---: | ---: |
-| es12_bpm0 x | -2.522531436569165e-7 | -0.0002522531436569165 |
-| es12_bpm0 y | 1.5533675266691317e-7 | 0.00015533675266691318 |
-
-Both currents were restored to zero and the resulting readbacks again matched
-the model. Status remained `UNKNOWN`. Test services were stopped afterward.
+The live check loads `generated/toy_ring.db` in `softIocPVA`, connects all
+1,152 numeric PVs and a representative status PV, and forwards horizontal
+0.01 A and vertical -0.02 A setpoints. It compares all 768 readbacks against
+an independent, deterministic Tao reference machine, checking the mean and
+RMS of the added noise separately for the 384 current and 384 BPM readbacks.
+It repeats these checks after restoring both setpoints to zero.
 
 Unit coverage verifies the full signal inventory, p4p callback-to-worker flow,
-model-confirmed readback publication, failed-set behavior, and BPM conversion.
+machine-confirmed readback publication, failed-set behavior, BPM conversion,
+noise mean/RMS, and rapid setpoint changes while the worker is busy.
 Run it with:
 
 ```sh
@@ -169,12 +169,12 @@ Without Pixi, compile and run the same standard-library test suite from the
 repository root:
 
 ```sh
-python -m compileall -q iocs models tests
+python -m compileall -q iocs machines tests
 python -m unittest discover -s tests -v
 ```
 
-The opt-in live check starts and stops its own `softIocPVA` and model-service
-processes, then compares all 768 EPICS readbacks with an independent Tao model:
+The opt-in live check starts and stops its own `softIocPVA` and machine-service
+processes, then compares all 768 noisy EPICS readbacks with an independent Tao machine:
 
 ```sh
 pixi run -e simulation python tests/check_live_pva.py
