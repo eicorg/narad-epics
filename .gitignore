@@ -50,3 +50,7 @@ Thumbs.db
 
 # Local debug logs
 *.log
+
+# Local IOC/model runtime artifacts
+.iocsh_history
+*.digested*

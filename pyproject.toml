@@ -12,9 +12,13 @@ dependencies = [
     "PyYAML>=6.0,<7.0",
 ]
 
+[project.optional-dependencies]
+bridge = ["caproto>=1.3,<2"]
+
 [project.scripts]
 narad-epics-generate = "iocs.generate_db:main"
 narad-epics-generate-opis = "iocs.opis.generate_opis:main"
+narad-epics-bridge = "iocs.ca_bridge:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["iocs"]
