@@ -107,13 +107,26 @@ class GenerationTests(unittest.TestCase):
         )
         self.assertEqual(
             bpm.fields,
-            (("DESC", "Measured horizontal beam position."), ("EGU", "mm"), ("PREC", "3")),
+          (
+            ("DESC", "Measured horizontal beam position."),
+            ("EGU", "mm"),
+            ("PREC", "3"),
+            ("VAL", "0"),
+            ("UDF", "0"),
+          ),
         )
         self.assertEqual(
           records[1].fields[0],
           ("DESC", "Desired magnet current command with extr"),
         )
-        self.assertEqual(records[2].fields, (("DESC", 'Power supply "state" summary.'),))
+        self.assertEqual(
+          records[2].fields,
+          (
+            ("DESC", 'Power supply "state" summary.'),
+            ("VAL", "UNKNOWN"),
+            ("UDF", "0"),
+          ),
+        )
 
     def test_renders_stable_epics_database_syntax_and_escapes_strings(self) -> None:
         records = map_description(load_narad_description(self.source))
@@ -128,6 +141,9 @@ class GenerationTests(unittest.TestCase):
             rendered,
         )
         self.assertIn('    field(EGU, "mm")', rendered)
+        self.assertIn('    field(VAL, "0")', rendered)
+        self.assertIn('    field(VAL, "UNKNOWN")', rendered)
+        self.assertIn('    field(UDF, "0")', rendered)
         self.assertIn('    field(DESC, "Power supply \\"state\\" summary.")', rendered)
         self.assertNotIn("field(EGU, \"none\")", rendered)
         self.assertTrue(rendered.endswith("}\n"))

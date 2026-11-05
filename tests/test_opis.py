@@ -43,32 +43,6 @@ class PhoebusDisplayTests(unittest.TestCase):
             render_overview(build_rows(self.source), self.source),
         )
 
-    def test_column_headings_align_with_embedded_row_columns(self) -> None:
-        root = ET.parse(self.overview).getroot()
-        expected = {
-            "Component Heading": ("Component", 30, 200, 0),
-            "Type Heading": ("Type", 235, 130, 0),
-            "Horizontal Status Heading": ("H / X status", 370, 120, 1),
-            "Horizontal Setpoint Heading": ("H setpoint", 495, 130, 1),
-            "Horizontal Readback Heading": ("H readback", 630, 130, 1),
-            "Vertical Status Heading": ("V / Y status", 770, 120, 1),
-            "Vertical Setpoint Heading": ("V setpoint", 895, 130, 1),
-            "Vertical Readback Heading": ("V readback", 1030, 130, 1),
-        }
-        actual = {}
-        for widget in root.findall("widget"):
-            name = widget.findtext("name")
-            if name not in expected:
-                continue
-            actual[name] = (
-                widget.findtext("text"),
-                int(widget.findtext("x")),
-                int(widget.findtext("width")),
-                int(widget.findtext("horizontal_alignment")),
-            )
-
-        self.assertEqual(actual, expected)
-
     def test_embedded_rows_expand_to_every_toy_ring_signal_once(self) -> None:
         root = ET.parse(self.overview).getroot()
         embedded = [

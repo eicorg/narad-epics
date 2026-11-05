@@ -206,6 +206,9 @@ within the IOC namespace. Alias uniqueness is checked after normalization.
 | `native_description` | `DESC` | Truncate to EPICS' 40-character limit |
 | `native_unit` | `EGU` | Emit for analog records unless value is `none` |
 | `native_data_type: Float` | `PREC` | Default to `3` |
+| `native_data_type: Float` | `VAL` | Simulation default `0` |
+| `native_data_type: String` | `VAL` | Simulation default `UNKNOWN` |
+| All supported signals | `UDF` | Set to `0` so the simulation default is defined |
 
 No range, alarm, or conversion fields are inferred. The YAML does not provide
 enough information to assign `HOPR`, `LOPR`, `DRVH`, `DRVL`, `HIHI`, `HIGH`,
@@ -218,11 +221,15 @@ The initial generated database contains standalone soft records:
 - No `INP` or `OUT` links are generated.
 - No hardware device support is selected.
 - Records retain the default passive scan behavior.
-- No initial `VAL` is fabricated.
+- Analog records initialize to `0`; string status records initialize to
+	`UNKNOWN`.
+- `UDF` initializes to `0`, preventing a startup `UDF/INVALID` alarm for these
+	explicit simulation values.
 - No simulated relationship between setpoints and readbacks is created.
 
 Device support, hardware addressing, scan policy, and simulation behavior are
-separate configuration concerns and can be added in a later mapping layer.
+separate configuration concerns. The generated defaults are placeholders for
+this standalone soft IOC, not measurements or values supplied by Narad.
 
 ## Validation contract
 

@@ -37,6 +37,8 @@ class ToyRingDatabaseTests(unittest.TestCase):
             "ai",
             ("DESC", "Measured horizontal beam position."),
             ("EGU", "mm"),
+            ("VAL", "0"),
+            ("UDF", "0"),
             alias="inst:ES12_BPM0:horizontal_position_binding",
             binding_id="inst:ES12_BPM0.horizontal_position_binding",
         )
@@ -45,6 +47,8 @@ class ToyRingDatabaseTests(unittest.TestCase):
             "ao",
             ("DESC", "Desired magnet current command."),
             ("EGU", "A"),
+            ("VAL", "0"),
+            ("UDF", "0"),
             alias="inst:ES12_T1:horizontal_current_setpoint_binding",
             binding_id="inst:ES12_T1.horizontal_current_setpoint_binding",
         )
@@ -53,6 +57,8 @@ class ToyRingDatabaseTests(unittest.TestCase):
             "ai",
             ("DESC", "Measured magnet current."),
             ("EGU", "A"),
+            ("VAL", "0"),
+            ("UDF", "0"),
             alias="inst:ES12_T1:horizontal_current_readback_binding",
             binding_id="inst:ES12_T1.horizontal_current_readback_binding",
         )
@@ -60,6 +66,8 @@ class ToyRingDatabaseTests(unittest.TestCase):
             "inst:es12-t1:PS:H:Status",
             "stringin",
             ("DESC", "Power-supply or device state summary."),
+            ("VAL", "UNKNOWN"),
+            ("UDF", "0"),
             alias="inst:ES12_T1:horizontal_magnet_status_binding",
             binding_id="inst:ES12_T1.horizontal_magnet_status_binding",
         )

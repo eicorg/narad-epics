@@ -12,6 +12,8 @@ _RECORD_TYPES = {
 }
 _DESCRIPTION_LENGTH = 40
 _DEFAULT_PRECISION = "3"
+_NUMERIC_SIMULATION_VALUE = "0"
+_STRING_SIMULATION_VALUE = "UNKNOWN"
 
 
 def map_description(description: NaradDescription) -> tuple[EpicsRecord, ...]:
@@ -27,6 +29,10 @@ def map_description(description: NaradDescription) -> tuple[EpicsRecord, ...]:
             if signal.native_unit != "none":
                 fields.append(("EGU", signal.native_unit))
             fields.append(("PREC", _DEFAULT_PRECISION))
+            fields.append(("VAL", _NUMERIC_SIMULATION_VALUE))
+        else:
+            fields.append(("VAL", _STRING_SIMULATION_VALUE))
+        fields.append(("UDF", "0"))
 
         records.append(
             EpicsRecord(
