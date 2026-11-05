@@ -9,16 +9,25 @@ The supported EPICS runtime starts the adapter through the p4p service in
 `../iocs/pva_bridge.py`:
 
 ```sh
+pixi install -e simulation
+```
+
+When using a Python environment supplied by Bmad instead of Pixi:
+
+```sh
+python -m pip install -e ".[simulation]"
+```
+
+```sh
 softIocPVA -d generated/toy_ring.db
 pixi run -e simulation narad-epics-model-service
 ```
 
-PowerShell uses the same commands with Windows path separators when a path is
-provided:
+With `.[simulation]` installed in the active Python environment, the equivalent
+model-service command is:
 
-```powershell
-softIocPVA -d generated\toy_ring.db
-pixi run -e simulation narad-epics-model-service
+```sh
+python -m iocs.pva_bridge
 ```
 
 Run those commands in separate terminals from the repository root. PyTao must

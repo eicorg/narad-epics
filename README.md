@@ -47,9 +47,9 @@ narad-epics/
 
 ## Development environment
 
-The project uses [Pixi](https://pixi.sh/) to provide a reproducible Python
-environment on Windows, Linux, and macOS. Install the environment and run all
-checks from the repository root:
+The project uses [Pixi](https://pixi.sh/) to provide a reproducible Linux Python
+environment. Install the environment and run all checks from the repository
+root:
 
 ```sh
 pixi install
@@ -62,6 +62,12 @@ Run only the tests with:
 pixi run test
 ```
 
+The direct Python equivalent is:
+
+```sh
+python -m unittest discover -s tests -v
+```
+
 ## Run the PVA simulation
 
 Run the IOC and persistent Tao model service in separate terminals from the
@@ -70,6 +76,13 @@ repository root:
 ```sh
 softIocPVA -d generated/toy_ring.db
 pixi run -e simulation narad-epics-model-service
+```
+
+After `python -m pip install -e ".[simulation]"`, the model service can also be
+started without Pixi:
+
+```sh
+python -m iocs.pva_bridge
 ```
 
 The service uses p4p to monitor all 384 setpoint PVs over PVAccess and publishes
@@ -271,18 +284,18 @@ input produces stable output.
 
 Generate a database from a Narad description with the installed command:
 
-```powershell
-pixi run narad-epics-generate `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+pixi run narad-epics-generate \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--output generated/toy_ring.db
 ```
 
 Validate parsing, references, mappings, record names, and aliases without
 writing a file:
 
-```powershell
-pixi run narad-epics-generate `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+pixi run narad-epics-generate \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--check
 ```
 
@@ -291,23 +304,33 @@ pixi run narad-epics-generate `
 Pixi is not required at runtime. From the repository root, install the project
 and its dependencies into the active Python environment:
 
-```powershell
+```sh
 python -m pip install -e .
 ```
 
+For the PVAccess Tao model service, install the optional simulation
+dependencies as well:
+
+```sh
+python -m pip install -e ".[simulation]"
+```
+
+This installs p4p and PyTao. EPICS Base (`softIocPVA`) and Bmad's native
+`libtao` shared library must still be installed separately.
+
 Generate the database through the Python module entry point:
 
-```powershell
-python -m iocs.generate_db `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+python -m iocs.generate_db \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--output generated/toy_ring.db
 ```
 
 Run validation without writing a database:
 
-```powershell
-python -m iocs.generate_db `
-	yaml-descriptions/toy_ring_narad_instance.yaml `
+```sh
+python -m iocs.generate_db \
+	yaml-descriptions/toy_ring_narad_instance.yaml \
 	--check
 ```
 
