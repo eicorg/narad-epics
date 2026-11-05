@@ -12,6 +12,9 @@ dependencies = [
     "PyYAML>=6.0,<7.0",
 ]
 
+[project.scripts]
+narad-epics-generate = "iocs.generate_db:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["iocs"]
 

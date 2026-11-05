@@ -34,6 +34,15 @@ class SignalBinding:
 
 
 @dataclass(frozen=True, slots=True)
+class EpicsRecord:
+    record_type: str
+    name: str
+    aliases: tuple[str, ...]
+    info_items: tuple[tuple[str, str], ...]
+    fields: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class NaradDescription:
     source: Path
     component_ids: frozenset[str]

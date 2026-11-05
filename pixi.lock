@@ -545,7 +545,7 @@ packages:
 - pypi: ./
   name: narad-epics
   version: 0.1.0
-  sha256: a27734e9dc1bf904d74d49250c99bf36afcaf390ee5421083e9b9041189a75b8
+  sha256: 2c7c3ec188e69aaa1b0e7a2c99685e25bac8a56d40028caef71ac3261326c5ee
   requires_dist:
   - pyyaml>=6.0,<7.0
   requires_python: '>=3.11,<3.15'

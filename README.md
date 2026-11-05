@@ -29,8 +29,8 @@ narad-epics/
 	components and those signals.
 - `iocs/` is the home of the Python toolkit that validates Narad YAML, maps
 	Narad signals to EPICS record types, and generates the `.db` files used by
-	EPICS IOCs. This toolkit is under development; its mapping contract is
-	documented below.
+	EPICS IOCs. Its parser, mapping contract, renderer, and command-line utility
+	are documented below.
 - `models/` contains the physics-modeling parts of the project. It is separate
 	from IOC translation so lattice and beam-physics logic do not become coupled
 	to EPICS database generation.
@@ -218,23 +218,53 @@ violated:
 The translator preserves source order so repeated generation from the same
 input produces stable output.
 
-## Planned command-line interface
+## Command-line interface
 
-The Python implementation will live under `iocs/` and expose generation and
-validation-only modes:
+Generate a database from a Narad description with the installed command:
+
+```powershell
+pixi run narad-epics-generate `
+	yaml-descriptions/toy_ring_narad_instance.yaml `
+	--output generated/toy_ring.db
+```
+
+Validate parsing, references, mappings, record names, and aliases without
+writing a file:
+
+```powershell
+pixi run narad-epics-generate `
+	yaml-descriptions/toy_ring_narad_instance.yaml `
+	--check
+```
+
+### Direct Python
+
+Pixi is not required at runtime. From the repository root, install the project
+and its dependencies into the active Python environment:
+
+```powershell
+python -m pip install -e .
+```
+
+Generate the database through the Python module entry point:
 
 ```powershell
 python -m iocs.generate_db `
-		yaml-descriptions/toy_ring_narad_instance.yaml `
-		--output generated/toy_ring.db
-
-python -m iocs.generate_db `
-		yaml-descriptions/toy_ring_narad_instance.yaml `
-		--check
+	yaml-descriptions/toy_ring_narad_instance.yaml `
+	--output generated/toy_ring.db
 ```
 
-The implementation will keep YAML parsing, cross-reference validation, EPICS
-mapping, and `.db` rendering as separate testable stages.
+Run validation without writing a database:
+
+```powershell
+python -m iocs.generate_db `
+	yaml-descriptions/toy_ring_narad_instance.yaml `
+	--check
+```
+
+Generation creates parent directories as needed and atomically replaces the
+destination file only after rendering succeeds. YAML parsing, cross-reference
+validation, EPICS mapping, and `.db` rendering remain separate testable stages.
 
 ## References
 
