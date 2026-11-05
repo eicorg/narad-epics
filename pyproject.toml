@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "narad-epics"
+version = "0.1.0"
+description = "Translate Narad accelerator descriptions into EPICS IOC databases"
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "PyYAML>=6.0,<7.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["iocs"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+python = ">=3.11,<3.15"
+
+[tool.pixi.pypi-dependencies]
+narad-epics = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+compile = "python -m compileall -q iocs tests"
+test = "python -m unittest discover -s tests -v"
+check = { depends-on = ["compile", "test"] }
