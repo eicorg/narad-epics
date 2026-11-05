@@ -1,4 +1,4 @@
-"""Opt-in live softIocPVA and Tao model-service check."""
+"""Opt-in live softIocPVA and Tao machine-service check."""
 
 import math
 import os
@@ -18,7 +18,7 @@ print("Test logs:", LOG_DIR, flush=True)
 sys.path.insert(0, str(ROOT))
 
 from iocs.pva_bridge import load_mapping
-from models.pv_model import RingModel
+from machines.pv_machine import RingMachine
 from p4p.client.thread import Context
 
 
@@ -102,9 +102,9 @@ try:
         "service",
         [sys.executable, "-u", "-m", "iocs.pva_bridge", "--timeout", "20"],
     )
-    wait_for("service", "Model service ready", timeout=90.0)
+    wait_for("service", "Machine service ready", timeout=90.0)
 
-    reference = RingModel(ROOT / "models/toy_ring.bmad")
+    reference = RingMachine(ROOT / "machines/toy_ring.bmad")
 
     def apply(plane: str, value: float) -> None:
         pv = f"inst:es12-t1:PS:{plane}:Current-SP"
@@ -114,16 +114,24 @@ try:
 
     apply("H", 0.01)
     apply("V", -0.02)
-    for readback in readbacks:
-        expected = reference.get(readback.key) * readback.scale
-        actual = float(scalar(context.get(readback.pv, timeout=10.0)))
-        assert math.isclose(
-            actual, expected, rel_tol=1e-10, abs_tol=1e-12
-        ), (readback.pv, actual, expected)
-    print(
-        "Verified all 768 current/BPM readbacks, including m-to-mm conversion.",
-        flush=True,
-    )
+    def check_readbacks():
+        errors = {0.01: [], 0.1: []}
+        actuals = context.get([s.pv for s in readbacks], timeout=20.0)
+        for readback, value in zip(readbacks, actuals):
+            expected = reference.get(readback.key) * readback.scale
+            actual = float(scalar(value))
+            assert math.isfinite(actual), readback.pv
+            errors[readback.noise_rms].append(actual - expected)
+        for sigma, samples in errors.items():
+            assert len(samples) == 384
+            rms = math.sqrt(sum(x*x for x in samples) / len(samples))
+            mean = sum(samples) / len(samples)
+            assert 0.75 * sigma < rms < 1.25 * sigma, (sigma, rms)
+            assert abs(mean) < 0.25 * sigma, (sigma, mean)
+            print(f'Readback noise: requested RMS {sigma}, measured RMS {rms}', flush=True)
+        print('Verified all 768 current/BPM readbacks with their specified noise.', flush=True)
+
+    check_readbacks()
     print(
         "Status untouched:",
         scalar(context.get("inst:es12-t1:PS:H:Status", timeout=10.0)),
@@ -132,7 +140,11 @@ try:
 
     apply("H", 0.0)
     apply("V", 0.0)
-    print("Restored both currents to zero; readbacks match Tao.", flush=True)
+    check_readbacks()
+    for plane in ('H', 'V'):
+        pv = f'inst:es12-t1:PS:{plane}:Current-SP'
+        assert float(scalar(context.get(pv, timeout=10.0))) == 0.0
+    print("Restored both setpoints to zero; noisy readbacks verified.", flush=True)
     context.close()
 
     if ioc.stdin is not None:

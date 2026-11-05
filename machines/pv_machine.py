@@ -1,4 +1,4 @@
-"""PV access to one persistent Tao model; currents in A, positions in m."""
+"""PV access to one persistent Tao machine; currents in A, positions in m."""
 
 from pathlib import Path
 import math
@@ -6,7 +6,7 @@ import math
 from pytao import Tao
 
 
-class RingModel:
+class RingMachine:
     def __init__(self, lattice: Path):
         self.tao = Tao(lattice_file=str(lattice.resolve()), noinit=True,
                        nostartup=True, noplot=True)
@@ -41,7 +41,7 @@ class RingModel:
                 overlay, variable = currents[pv]
                 return float(self.tao.ele_control_var(overlay)[variable])
         name, component = self.bpms[pv]
-        # Closed-ring model orbit at the downstream end of the finite BPM.
+        # Closed-ring machine orbit at the downstream end of the finite BPM.
         return float(self.tao.lat_list(name, f"orbit.vec.{component}")[0])
 
     def set(self, pv: str, value: float) -> float:

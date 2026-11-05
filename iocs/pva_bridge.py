@@ -1,4 +1,4 @@
-"""Connect one persistent Tao model to a softIocPVA database with p4p."""
+"""Connect one persistent Tao machine to a softIocPVA database with p4p."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import logging
 import math
 from pathlib import Path
 from queue import Queue
+import random
 import re
 import signal
 import threading
@@ -21,22 +22,23 @@ LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class ModelSignal:
-    """Map one EPICS PV to a Tao-facing model key and unit scale."""
+class MachineSignal:
+    """Map one EPICS PV to a Tao-facing machine key and unit scale."""
 
     pv: str
     key: str
     scale: float = 1.0
+    noise_rms: float = 0.0  # In EPICS engineering units: A or mm.
 
 
 @dataclass(frozen=True)
-class ModelUpdate:
-    signal: ModelSignal
+class MachineUpdate:
+    signal: MachineSignal
     value: float
 
 
-class SimulationModel(Protocol):
-    """Tao model operations required by :class:`ModelService`."""
+class SimulationMachine(Protocol):
+    """Tao machine operations required by :class:`MachineService`."""
 
     def list_pvs(self) -> dict[str, list[str]]: ...
 
@@ -66,31 +68,32 @@ class PVAContext(Protocol):
     def close(self) -> None: ...
 
 
-def load_mapping(source: Path) -> tuple[list[ModelSignal], list[ModelSignal]]:
-    """Map explicit Narad numeric signals to Tao model keys."""
+def load_mapping(source: Path) -> tuple[list[MachineSignal], list[MachineSignal]]:
+    """Map explicit Narad numeric signals to Tao machine keys."""
 
     description = load_narad_description(source)
     subjects: dict[str, set[str]] = {}
     for binding in description.bindings:
         subjects.setdefault(binding.object, set()).add(binding.subject)
 
-    setpoints: list[ModelSignal] = []
-    readbacks: list[ModelSignal] = []
+    setpoints: list[MachineSignal] = []
+    readbacks: list[MachineSignal] = []
     for narad_signal in description.signals:
         if narad_signal.signal_role == "Status":
             continue
         bound = subjects.get(narad_signal.id, set())
         if len(bound) != 1:
-            raise ValueError(f"Expected one model device for {narad_signal.id}")
+            raise ValueError(f"Expected one machine device for {narad_signal.id}")
         device = next(iter(bound)).removeprefix("inst:").lower()
         current = re.fullmatch(
             r"inst:[^:]+:PS:([HV]):Current-(SP|RB)", narad_signal.id
         )
         bpm = re.fullmatch(r"inst:[^:]+:([XY])-RB", narad_signal.id)
         if current and narad_signal.native_unit == "A":
-            item = ModelSignal(
+            item = MachineSignal(
                 narad_signal.id,
                 f"steering_{current[1].lower()}:i_{device}",
+                noise_rms=0.01 if current[2] == "RB" else 0.0,
             )
             target = setpoints if current[2] == "SP" else readbacks
         elif (
@@ -98,72 +101,76 @@ def load_mapping(source: Path) -> tuple[list[ModelSignal], list[ModelSignal]]:
             and narad_signal.native_unit == "mm"
             and narad_signal.signal_role == "Readback"
         ):
-            item = ModelSignal(
+            item = MachineSignal(
                 narad_signal.id,
                 f"{device}:{bpm[1].lower()}",
                 1000.0,
+                noise_rms=0.1,
             )
             target = readbacks
         else:
-            raise ValueError(f"Unsupported model signal: {narad_signal.id}")
+            raise ValueError(f"Unsupported machine signal: {narad_signal.id}")
         target.append(item)
     return setpoints, readbacks
 
 
 def publish_readbacks(
-    model: SimulationModel,
-    readbacks: list[ModelSignal],
+    machine: SimulationMachine,
+    readbacks: list[MachineSignal],
     context: PVAContext,
     timeout: float,
 ) -> None:
-    """Read all model outputs and publish them with one p4p put."""
+    """Publish machine outputs with independent zero-mean Gaussian noise."""
 
     context.put(
         [signal.pv for signal in readbacks],
-        [model.get(signal.key) * signal.scale for signal in readbacks],
+        [
+            machine.get(signal.key) * signal.scale
+            + (random.gauss(0.0, signal.noise_rms) if signal.noise_rms else 0.0)
+            for signal in readbacks
+        ],
         timeout=timeout,
         wait=True,
     )
 
 
 def forward_setpoint(
-    model: SimulationModel,
-    signal: ModelSignal,
+    machine: SimulationMachine,
+    signal: MachineSignal,
     value: float,
-    readbacks: list[ModelSignal],
+    readbacks: list[MachineSignal],
     context: PVAContext,
     timeout: float,
 ) -> None:
-    """Apply one setpoint and publish model-confirmed readbacks."""
+    """Apply one setpoint and publish machine-confirmed readbacks."""
 
-    model.set(signal.key, value)
-    publish_readbacks(model, readbacks, context, timeout)
+    machine.set(signal.key, value)
+    publish_readbacks(machine, readbacks, context, timeout)
 
 
-class ModelService:
-    """Serialize PVA setpoint monitors through one persistent Tao model."""
+class MachineService:
+    """Serialize PVA setpoint monitors through one persistent Tao machine."""
 
     def __init__(
         self,
-        model: SimulationModel,
+        machine: SimulationMachine,
         context: PVAContext,
-        setpoints: list[ModelSignal],
-        readbacks: list[ModelSignal],
+        setpoints: list[MachineSignal],
+        readbacks: list[MachineSignal],
         *,
         timeout: float = 10.0,
     ) -> None:
-        self.model = model
+        self.machine = machine
         self.context = context
         self.setpoints = setpoints
         self.readbacks = readbacks
         self.timeout = timeout
-        self._updates: Queue[ModelUpdate | None] = Queue()
+        self._updates: Queue[MachineUpdate | None] = Queue()
         self._subscriptions: list[Any] = []
         self._initialized: set[str] = set()
-        self._last_setpoints: dict[str, float] = {}
         self._worker = threading.Thread(
             target=self._run_worker,
-            name="tao-model-worker",
+            name="tao-machine-worker",
             daemon=True,
         )
         self._started = False
@@ -173,27 +180,27 @@ class ModelService:
         """Validate inventories, connect to softIocPVA, and start monitors."""
 
         if self._started:
-            raise RuntimeError("model service is already started")
+            raise RuntimeError("machine service is already started")
         if self._closed:
-            raise RuntimeError("model service is closed")
+            raise RuntimeError("machine service is closed")
 
-        model_keys = {
-            key for group in self.model.list_pvs().values() for key in group
+        machine_keys = {
+            key for group in self.machine.list_pvs().values() for key in group
         }
-        for model_signal in self.setpoints + self.readbacks:
-            if model_signal.key not in model_keys:
-                raise ValueError(f"Model key missing: {model_signal.key}")
+        for machine_signal in self.setpoints + self.readbacks:
+            if machine_signal.key not in machine_keys:
+                raise ValueError(f"Machine key missing: {machine_signal.key}")
 
         epics_names = [
-            model_signal.pv for model_signal in self.setpoints + self.readbacks
+            machine_signal.pv for machine_signal in self.setpoints + self.readbacks
         ]
         self.context.get(epics_names, timeout=self.timeout)
         self._worker.start()
         try:
-            for model_signal in self.setpoints:
+            for machine_signal in self.setpoints:
                 subscription = self.context.monitor(
-                    model_signal.pv,
-                    lambda value, monitored=model_signal: self._on_update(
+                    machine_signal.pv,
+                    lambda value, monitored=machine_signal: self._on_update(
                         monitored, value
                     ),
                     notify_disconnect=True,
@@ -210,7 +217,7 @@ class ModelService:
         self._updates.join()
 
     def close(self) -> None:
-        """Stop PVA monitors and the model worker, then close p4p."""
+        """Stop PVA monitors and the machine worker, then close p4p."""
 
         if self._closed:
             return
@@ -223,31 +230,28 @@ class ModelService:
             self._worker.join()
         self.context.close()
 
-    def _on_update(self, model_signal: ModelSignal, value: Any) -> None:
+    def _on_update(self, machine_signal: MachineSignal, value: Any) -> None:
         if self._closed:
             return
         if isinstance(value, Exception):
-            LOGGER.warning("PVA monitor for %s: %s", model_signal.pv, value)
+            LOGGER.warning("PVA monitor for %s: %s", machine_signal.pv, value)
             return
         try:
             numeric_value = _numeric_value(value)
         except (TypeError, ValueError):
-            LOGGER.exception("Ignoring invalid setpoint update for %s", model_signal.pv)
+            LOGGER.exception("Ignoring invalid setpoint update for %s", machine_signal.pv)
             return
 
-        if model_signal.pv not in self._initialized:
-            self._initialized.add(model_signal.pv)
-            self._last_setpoints[model_signal.pv] = numeric_value
+        if machine_signal.pv not in self._initialized:
+            self._initialized.add(machine_signal.pv)
             if len(self._initialized) == len(self.setpoints):
                 LOGGER.info(
-                    "Model service ready: %d setpoints, %d readbacks",
+                    "Machine service ready: %d setpoints, %d readbacks",
                     len(self.setpoints),
                     len(self.readbacks),
                 )
             return
-        if self._last_setpoints.get(model_signal.pv) == numeric_value:
-            return
-        self._updates.put(ModelUpdate(model_signal, numeric_value))
+        self._updates.put(MachineUpdate(machine_signal, numeric_value))
 
     def _run_worker(self) -> None:
         while True:
@@ -256,14 +260,13 @@ class ModelService:
                 if update is None:
                     return
                 forward_setpoint(
-                    self.model,
+                    self.machine,
                     update.signal,
                     update.value,
                     self.readbacks,
                     self.context,
                     self.timeout,
                 )
-                self._last_setpoints[update.signal.pv] = update.value
                 LOGGER.info(
                     "Forwarded %s = %s; published %d readbacks",
                     update.signal.pv,
@@ -271,7 +274,7 @@ class ModelService:
                     len(self.readbacks),
                 )
             except Exception:
-                LOGGER.exception("Failed to process model setpoint update")
+                LOGGER.exception("Failed to process machine setpoint update")
             finally:
                 self._updates.task_done()
 
@@ -300,14 +303,14 @@ def _pva_context(provider: str) -> PVAContext:
 def _argument_parser() -> argparse.ArgumentParser:
     project_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
-        description="Connect the persistent Tao model to softIocPVA."
+        description="Connect the persistent Tao machine to softIocPVA."
     )
     parser.add_argument(
         "lattice",
         type=Path,
         nargs="?",
-        default=project_root / "models/toy_ring.bmad",
-        help="Bmad lattice file (default: models/toy_ring.bmad)",
+        default=project_root / "machines/toy_ring.bmad",
+        help="Bmad lattice file (default: machines/toy_ring.bmad)",
     )
     parser.add_argument(
         "--source",
@@ -322,7 +325,7 @@ def _argument_parser() -> argparse.ArgumentParser:
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
-    """Run the PVA model service until interrupted."""
+    """Run the PVA machine service until interrupted."""
 
     options = _argument_parser().parse_args(arguments)
     logging.basicConfig(
@@ -334,11 +337,11 @@ def main(arguments: Sequence[str] | None = None) -> int:
         signal.signal(signal_name, lambda *_: stop.set())
 
     try:
-        from models.pv_model import RingModel
+        from machines.pv_machine import RingMachine
 
         setpoints, readbacks = load_mapping(options.source)
-        service = ModelService(
-            RingModel(options.lattice),
+        service = MachineService(
+            RingMachine(options.lattice),
             _pva_context(options.provider),
             setpoints,
             readbacks,
@@ -346,12 +349,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
         )
         service.start()
         LOGGER.info(
-            "PVA model service running with %d setpoint monitors",
+            "PVA machine service running with %d setpoint monitors",
             len(setpoints),
         )
         stop.wait()
     except (OSError, RuntimeError, ValueError) as error:
-        LOGGER.error("Model service failed: %s", error)
+        LOGGER.error("Machine service failed: %s", error)
         return 1
     finally:
         if "service" in locals():

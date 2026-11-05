@@ -17,7 +17,7 @@ narad-epics/
 |-- yaml-descriptions/  # Narad YAML lattice descriptions
 |-- iocs/               # Narad-to-EPICS translation and IOC utilities
 |   `-- opis/            # Phoebus Display Builder operator displays
-|-- models/             # Physics modeling code and related data structures
+|-- machines/          # Accelerator machines and lattice data
 |-- generated/          # Checked reference EPICS databases
 |-- tests/              # Translation-toolkit tests and reference validation
 |-- pyproject.toml      # Python metadata, dependencies, and Pixi tasks
@@ -36,7 +36,7 @@ narad-epics/
 	for the Phoebus Display Builder screens. It contains one embedded row for
 	each signal-bearing component and supplies exact PV names to reusable BPM
 	and kicker row displays through macros.
-- `models/` contains the physics-modeling parts of the project. It is separate
+- `machines/` contains accelerator simulation code and lattice data. It is separate
 	from IOC translation so lattice and beam-physics logic do not become coupled
 	to EPICS database generation.
 - `generated/` contains reproducible `.db` output for reference descriptions.
@@ -70,15 +70,15 @@ python -m unittest discover -s tests -v
 
 ## Run the PVA simulation
 
-Run the IOC and persistent Tao model service in separate terminals from the
+Run the IOC and persistent Tao machine service in separate terminals from the
 repository root:
 
 ```sh
 softIocPVA -d generated/toy_ring.db
-pixi run -e simulation narad-epics-model-service
+pixi run -e simulation narad-epics-machine-service
 ```
 
-After `python -m pip install -e ".[simulation]"`, the model service can also be
+After `python -m pip install -e ".[simulation]"`, the machine service can also be
 started without Pixi:
 
 ```sh
@@ -86,7 +86,8 @@ python -m iocs.pva_bridge
 ```
 
 The service uses p4p to monitor all 384 setpoint PVs over PVAccess and publishes
-768 model-derived current and BPM readbacks. See
+768 machine-derived current and BPM readbacks, with 10 mA RMS current noise
+and 0.1 mm RMS BPM noise. See
 [`iocs/BRIDGE.md`](iocs/BRIDGE.md) for the full startup, discovery, behavior,
 and live-validation guide.
 
@@ -138,7 +139,7 @@ signal inventory is:
 These names and controls are illustrative. They do not represent operational
 EIC controls.
 
-## Narad signal model
+## Narad signal schema
 
 A signal carries its EPICS-facing name, role, data type, engineering unit, and
 description. For example:
@@ -272,7 +273,7 @@ violated:
 5. A binding predicate conflicts with the signal role:
 	 - `pals:has_readback_signal` requires `Readback`.
 	 - `pals:has_setpoint_signal` requires `Setpoint`.
-	 - `pals:has_signal` is used for `Status` in the reference model.
+	 - `pals:has_signal` is used for `Status` in the reference machine.
 6. A signal data-type/role combination is not in the mapping table.
 7. A record name or normalized alias violates EPICS naming or length rules.
 8. A record name or normalized alias collides with any other record or alias.
@@ -308,7 +309,7 @@ and its dependencies into the active Python environment:
 python -m pip install -e .
 ```
 
-For the PVAccess Tao model service, install the optional simulation
+For the PVAccess Tao machine service, install the optional simulation
 dependencies as well:
 
 ```sh
