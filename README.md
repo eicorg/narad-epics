@@ -17,6 +17,7 @@ narad-epics/
 |-- yaml-descriptions/  # Narad YAML lattice descriptions
 |-- iocs/               # Narad-to-EPICS translation and IOC utilities
 |-- models/             # Physics modeling code and related data structures
+|-- generated/          # Checked reference EPICS databases
 |-- tests/              # Translation-toolkit tests and reference validation
 |-- pyproject.toml      # Python metadata, dependencies, and Pixi tasks
 |-- README.md
@@ -34,6 +35,9 @@ narad-epics/
 - `models/` contains the physics-modeling parts of the project. It is separate
 	from IOC translation so lattice and beam-physics logic do not become coupled
 	to EPICS database generation.
+- `generated/` contains reproducible `.db` output for reference descriptions.
+  `generated/toy_ring.db` is generated from the toy-ring YAML and checked by
+  the integration tests.
 - `tests/` verifies the translation toolkit with compact fixtures and the full
 	toy-ring description.
 
@@ -52,6 +56,12 @@ Run only the tests with:
 
 ```powershell
 pixi run test
+```
+
+Regenerate the checked toy-ring database with:
+
+```powershell
+pixi run generate-toy-ring
 ```
 
 Dependencies and routine development commands belong in `pyproject.toml`. The

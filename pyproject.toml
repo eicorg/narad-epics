@@ -32,3 +32,4 @@ narad-epics = { path = ".", editable = true }
 compile = "python -m compileall -q iocs tests"
 test = "python -m unittest discover -s tests -v"
 check = { depends-on = ["compile", "test"] }
+generate-toy-ring = "narad-epics-generate yaml-descriptions/toy_ring_narad_instance.yaml --output generated/toy_ring.db"
