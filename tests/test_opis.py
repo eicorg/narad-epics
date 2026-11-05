@@ -69,7 +69,11 @@ class PhoebusDisplayTests(unittest.TestCase):
                 expanded_pvs.append(macros[match.group(1)])
 
         self.assertEqual(len(expanded_pvs), 1536)
-        self.assertEqual(Counter(expanded_pvs), Counter(self.signal_ids))
+        self.assertTrue(all(pv.startswith("pva://") for pv in expanded_pvs))
+        self.assertEqual(
+            Counter(pv.removeprefix("pva://") for pv in expanded_pvs),
+            Counter(self.signal_ids),
+        )
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ facility:
     quantity_kind: BeamPosition
     native_data_type: Float
     native_unit: mm
-    access_protocol: EPICS Channel Access
+    access_protocol: EPICS PVAccess
   signal_bindings:
   - id: inst:BPM1.horizontal_position_binding
     subject: inst:BPM1
