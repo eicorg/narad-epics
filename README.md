@@ -16,6 +16,7 @@ context and do not become PVs automatically.
 narad-epics/
 |-- yaml-descriptions/  # Narad YAML lattice descriptions
 |-- iocs/               # Narad-to-EPICS translation and IOC utilities
+|   `-- opis/            # Phoebus Display Builder operator displays
 |-- models/             # Physics modeling code and related data structures
 |-- generated/          # Checked reference EPICS databases
 |-- tests/              # Translation-toolkit tests and reference validation
@@ -31,7 +32,10 @@ narad-epics/
 - `iocs/` is the home of the Python toolkit that validates Narad YAML, maps
 	Narad signals to EPICS record types, and generates the `.db` files used by
 	EPICS IOCs. Its parser, mapping contract, renderer, and command-line utility
-	are documented below.
+	are documented below. `iocs/opis/toy_ring_overview.bob` is the entry point
+	for the Phoebus Display Builder screens. It contains one embedded row for
+	each signal-bearing component and supplies exact PV names to reusable BPM
+	and kicker row displays through macros.
 - `models/` contains the physics-modeling parts of the project. It is separate
 	from IOC translation so lattice and beam-physics logic do not become coupled
 	to EPICS database generation.
@@ -63,6 +67,18 @@ Regenerate the checked toy-ring database with:
 ```powershell
 pixi run generate-toy-ring
 ```
+
+Regenerate the top-level Phoebus display from the same description with:
+
+```powershell
+pixi run generate-toy-ring-opis
+```
+
+Open `iocs/opis/toy_ring_overview.bob` in Phoebus Display Builder. Its 384
+rows follow lattice source order and use Embedded Display widgets to load
+`rows/bpm_row.bob` or `rows/kicker_row.bob`. Each embedded instance passes the
+component label, type, and exact PV names as macros. Start an IOC that loads
+`generated/toy_ring.db` before connecting the display to Channel Access.
 
 Dependencies and routine development commands belong in `pyproject.toml`. The
 generated `pixi.lock` file should be committed so local development and CI use

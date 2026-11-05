@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<display version="2.0.0">
+  <name>BPM Component Row</name>
+  <width>1160</width>
+  <height>44</height>
+  <background_color>
+    <color red="255" green="255" blue="255">
+    </color>
+  </background_color>
+  <widget type="label" version="2.0.0">
+    <name>Component</name>
+    <text>$(COMPONENT)</text>
+    <x>10</x>
+    <y>7</y>
+    <width>200</width>
+    <height>30</height>
+    <font>
+      <font family="Liberation Sans" style="BOLD" size="13.0">
+      </font>
+    </font>
+    <transparent>true</transparent>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Kind</name>
+    <text>$(KIND)</text>
+    <x>215</x>
+    <y>7</y>
+    <width>130</width>
+    <height>30</height>
+    <transparent>true</transparent>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Horizontal Position</name>
+    <pv_name>$(X_PV)</pv_name>
+    <x>610</x>
+    <y>5</y>
+    <width>130</width>
+    <height>34</height>
+  </widget>
+  <widget type="textupdate" version="2.0.0">
+    <name>Vertical Position</name>
+    <pv_name>$(Y_PV)</pv_name>
+    <x>1010</x>
+    <y>5</y>
+    <width>130</width>
+    <height>34</height>
+  </widget>
+</display>

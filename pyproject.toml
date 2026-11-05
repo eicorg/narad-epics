@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 narad-epics-generate = "iocs.generate_db:main"
+narad-epics-generate-opis = "iocs.opis.generate_opis:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["iocs"]
@@ -33,3 +34,4 @@ compile = "python -m compileall -q iocs tests"
 test = "python -m unittest discover -s tests -v"
 check = { depends-on = ["compile", "test"] }
 generate-toy-ring = "narad-epics-generate yaml-descriptions/toy_ring_narad_instance.yaml --output generated/toy_ring.db"
+generate-toy-ring-opis = "narad-epics-generate-opis yaml-descriptions/toy_ring_narad_instance.yaml --output iocs/opis/toy_ring_overview.bob"
