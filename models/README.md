@@ -1,7 +1,7 @@
 # PyTao toy-ring model
 
-Copied from the surrounding Toy_DT workspace: `pv_model.py`, `pv_server.py`,
-`toy_ring.bmad`, and `requirements-pv.txt`. The original files remain in place.
+This directory contains the PyTao adapter (`pv_model.py`), JSON TCP server
+(`pv_server.py`), lattice (`toy_ring.bmad`), and Python requirements.
 The lattice is self-contained; no parent-directory files are needed at runtime.
 It models an illustrative 18 GeV electron ring with ideal closed-orbit BPMs and
 linear magnet-current calibrations, not measured hardware behavior.
@@ -45,8 +45,8 @@ current limits, transactions, or persistent settings. Keep it on loopback.
 The event-driven bridge is implemented in `../iocs/ca_bridge.py`. It forwards
 384 steering setpoints, publishes 384 current readbacks and 384 BPM coordinates,
 and converts BPM meters to EPICS millimeters. It uses the existing database
-without changes. See [the bridge run guide](../iocs/BRIDGE.md) for the locally
-installed softIoc, startup commands, exact behavior, and live validation.
+without changes. See [the bridge run guide](../iocs/BRIDGE.md) for
+softIoc setup, startup commands, exact behavior, and live validation.
 
 Quadrupole and sextupole family currents are exposed by the model but have no
 signals in the checked database. The bridge leaves status records untouched.

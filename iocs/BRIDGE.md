@@ -1,30 +1,36 @@
-# Local softIoc and PyTao bridge
+# softIoc and PyTao bridge
 
-EPICS Base R7.0.11 was built in `../../.tools/epics-base` relative to this
-file's directory (the Toy_DT workspace's `.tools/epics-base`). The local
-executable is `../../.tools/epics-base/bin/darwin-aarch64/softIoc`.
-The build also supplies `caget` and `caput` in that directory. No global
-installation or shell configuration was changed.
+Install EPICS Base with `softIoc`, `caget`, and `caput` available on `PATH`.
+For a source installation, add its platform-specific `bin` directory to `PATH`:
 
-All commands below run from the `narad-epics` repository root.
+```sh
+export EPICS_BASE="/path/to/epics-base"
+export PATH="$EPICS_BASE/bin/<host-architecture>:$PATH"
+```
+
+Replace the placeholders with your installation directory and EPICS host
+architecture. The examples below use POSIX shell syntax and run from the
+`narad-epics` repository root.
 
 ## Python dependencies
 
-A local `.venv` was created using the existing Bmad Python environment with
-`--system-site-packages`; caproto 1.3.0 is installed there. For another
-environment, install the project with its bridge extra and the model requirements:
+Activate a Python environment with Bmad/libtao available, then install the
+project with its bridge extra and the model requirements:
 
 ```sh
 python -m pip install -e '.[bridge]'
 python -m pip install -r models/requirements-pv.txt
 ```
 
-Bmad/libtao must also be installed. The existing local library can be selected
-explicitly, which is needed when running PyTao from this `.venv`:
+If PyTao cannot discover libtao automatically, set `PYTAO_LIB_PATH` to the
+shared library in your Bmad installation. For example, on macOS:
 
 ```sh
-export PYTAO_LIB_PATH=/Users/Hamwi/.local/share/mamba/envs/bmad/lib/libtao.dylib
+export PYTAO_LIB_PATH="/path/to/bmad/lib/libtao.dylib"
 ```
+
+On Linux, use the corresponding `libtao.so` path. Make this environment variable
+available in the model terminal and when running the live check.
 
 ## Run
 
@@ -32,14 +38,13 @@ In the IOC terminal:
 
 ```sh
 export EPICS_CAS_INTF_ADDR_LIST=127.0.0.1
-../.tools/epics-base/bin/darwin-aarch64/softIoc -d generated/toy_ring.db
+softIoc -d generated/toy_ring.db
 ```
 
 In the model terminal:
 
 ```sh
-export PYTAO_LIB_PATH=/Users/Hamwi/.local/share/mamba/envs/bmad/lib/libtao.dylib
-.venv/bin/python models/pv_server.py
+python models/pv_server.py
 ```
 
 In the bridge terminal:
@@ -47,7 +52,7 @@ In the bridge terminal:
 ```sh
 export EPICS_CA_ADDR_LIST=127.0.0.1
 export EPICS_CA_AUTO_ADDR_LIST=NO
-.venv/bin/python -m iocs.ca_bridge
+python -m iocs.ca_bridge
 ```
 
 Wait for `Bridge ready: 384 setpoints, 768 readbacks`. The installed package also
@@ -59,10 +64,10 @@ From a fourth terminal, with the same CA client environment:
 ```sh
 export EPICS_CA_ADDR_LIST=127.0.0.1
 export EPICS_CA_AUTO_ADDR_LIST=NO
-../.tools/epics-base/bin/darwin-aarch64/caput inst:es12-t1:PS:H:Current-SP 0.01
+caput inst:es12-t1:PS:H:Current-SP 0.01
 # Wait for the bridge's "Forwarded ...; published 768 readbacks" message.
-../.tools/epics-base/bin/darwin-aarch64/caget inst:es12-t1:PS:H:Current-RB inst:es12-bpm0:X-RB
-../.tools/epics-base/bin/darwin-aarch64/caput inst:es12-t1:PS:H:Current-SP 0
+caget inst:es12-t1:PS:H:Current-RB inst:es12-bpm0:X-RB
+caput inst:es12-t1:PS:H:Current-SP 0
 ```
 
 ## Current behavior
@@ -89,7 +94,7 @@ The checked database and its generator are unchanged.
 
 ## Validation
 
-The local softIoc loaded `generated/toy_ring.db` successfully. A live test
+Validation with EPICS Base R7.0.11 and caproto 1.3.0 loaded `generated/toy_ring.db` successfully. A live test
 connected all 1,152 numeric PVs and a representative status PV, forwarded
 horizontal 0.01 A and vertical -0.02 A, and compared all 768 readbacks with
 PyTao. Example values with both currents applied:
@@ -107,9 +112,10 @@ To repeat the opt-in live check (starts and stops its own processes on loopback
 CA ports 15064/15065 and model port 18765):
 
 ```sh
-export PYTAO_LIB_PATH=/Users/Hamwi/.local/share/mamba/envs/bmad/lib/libtao.dylib
-.venv/bin/python tests/check_live_bridge.py
+python tests/check_live_bridge.py
 ```
 
-Set `EPICS_BASE` if the EPICS installation is elsewhere. Test logs are retained
-in the temporary directory printed by the checker.
+Set `EPICS_BASE` to your EPICS installation before running the checker; it
+locates `softIoc` under `$EPICS_BASE/bin/`. Run it in the Python environment
+with PyTao and the bridge dependencies installed. Test logs are retained in
+the temporary directory printed by the checker.
