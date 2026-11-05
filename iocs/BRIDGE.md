@@ -14,53 +14,36 @@ intermediate TCP model server in this runtime.
 If PyTao cannot locate Tao, set `PYTAO_LIB_PATH` to the actual `libtao` shared
 library supplied by the Bmad installation.
 
-For a source installation of EPICS Base on Linux or macOS, add its
-platform-specific binary directory to `PATH`:
+Install the locked Pixi environment with:
+
+```sh
+pixi install -e simulation
+```
+
+Alternatively, when Bmad supplies the active Python environment, install this
+project and its simulation extra into that environment:
+
+```sh
+python -m pip install -e ".[simulation]"
+```
+
+`pyproject.toml` is the single source for Python dependencies: the base project
+requires PyYAML, and the `simulation` extra adds p4p and PyTao. `softIocPVA` and
+the native `libtao` shared library are external prerequisites; pip and Pixi do
+not install those EPICS Base and Bmad runtime components for this project.
+
+If PyTao cannot locate Tao, set `PYTAO_LIB_PATH` to the actual `libtao` shared
+library supplied by the Bmad installation.
+
+For a source installation of EPICS Base, add its platform-specific binary
+directory to `PATH`:
 
 ```sh
 export EPICS_BASE="/path/to/epics-base"
 export PATH="$EPICS_BASE/bin/<host-architecture>:$PATH"
 ```
 
-## Run on Windows
-
-Open two PowerShell terminals in the `narad-epics` repository root.
-
-Terminal 1, start the PVA-enabled IOC:
-
-```powershell
-softIocPVA -d generated\toy_ring.db
-```
-
-Wait for `iocRun: All initialization complete` and leave it running.
-
-Terminal 2, start the persistent Tao model service:
-
-```powershell
-pixi run -e simulation narad-epics-model-service
-```
-
-The default lattice is `models/toy_ring.bmad`. To use another Bmad lattice,
-pass its path as the positional argument:
-
-```powershell
-pixi run -e simulation narad-epics-model-service C:\path\to\ring.bmad
-```
-
-From `C:\git\eic-accelerator`, identify the project manifest explicitly:
-
-```powershell
-pixi run -e simulation --manifest-path narad-epics\pyproject.toml `
-	narad-epics-model-service
-```
-
-Wait for the service to report:
-
-```text
-Model service ready: 384 setpoints, 768 readbacks
-```
-
-## Run on Linux or macOS
+## Run on Linux
 
 Open two terminals in the `narad-epics` repository root.
 
@@ -71,9 +54,8 @@ live-check shells:
 export PYTAO_LIB_PATH="/path/to/bmad/lib/libtao.so"
 ```
 
-On macOS, use the corresponding `libtao.dylib` path.
-
-Terminal 1, start the PVA-enabled IOC:
+Use the corresponding `libtao.so` path. Make this environment variable
+available in the model terminal and when running the live check.
 
 ```sh
 softIocPVA -d generated/toy_ring.db
@@ -85,10 +67,22 @@ Terminal 2, start the persistent Tao model service:
 pixi run -e simulation narad-epics-model-service
 ```
 
+Or, from an active environment where `.[simulation]` was installed:
+
+```sh
+python -m iocs.pva_bridge
+```
+
 To use another lattice:
 
 ```sh
 pixi run -e simulation narad-epics-model-service /path/to/ring.bmad
+```
+
+Pure Python:
+
+```sh
+python -m iocs.pva_bridge /path/to/ring.bmad
 ```
 
 From the parent directory, identify the project manifest explicitly:
@@ -102,15 +96,7 @@ Wait for `Model service ready: 384 setpoints, 768 readbacks`.
 
 ## Verify
 
-From another PowerShell terminal:
-
-```powershell
-pvput inst:es12-t1:PS:H:Current-SP 0.01
-pvget inst:es12-t1:PS:H:Current-RB inst:es12-bpm0:X-RB
-pvput inst:es12-t1:PS:H:Current-SP 0
-```
-
-The same client commands work from `sh`:
+From another terminal:
 
 ```sh
 pvput inst:es12-t1:PS:H:Current-SP 0.01
@@ -148,49 +134,60 @@ An individual failed update is logged and the service continues monitoring.
 ## Network discovery
 
 Localhost normally requires no extra configuration. For an IOC on another
-host, configure the usual PVA discovery variables before starting the service,
-for example:
-
-```powershell
-$env:EPICS_PVA_ADDR_LIST = "192.0.2.10"
-$env:EPICS_PVA_AUTO_ADDR_LIST = "NO"
-```
-
-For `sh`:
+host, configure the usual PVA discovery variables before starting the service:
 
 ```sh
-export EPICS_PVA_ADDR_LIST="192.0.2.10"
-export EPICS_PVA_AUTO_ADDR_LIST=NO
+export EPICS_PVA_ADDR_LIST="127.0.0.1"
+export EPICS_PVA_AUTO_ADDR_LIST=YES
 ```
 
 ## Validation
+
+Validation with EPICS Base R7.0.11 loaded `generated/toy_ring.db` in
+`softIocPVA` successfully. A live p4p test connected all 1,152 numeric PVs and
+a representative status PV, forwarded horizontal 0.01 A and vertical -0.02 A,
+and compared all 768 readbacks with PyTao. Example values with both currents
+applied:
+
+| BPM | Model m | EPICS mm |
+| --- | ---: | ---: |
+| es12_bpm0 x | -2.522531436569165e-7 | -0.0002522531436569165 |
+| es12_bpm0 y | 1.5533675266691317e-7 | 0.00015533675266691318 |
+
+Both currents were restored to zero and the resulting readbacks again matched
+the model. Status remained `UNKNOWN`. Test services were stopped afterward.
 
 Unit coverage verifies the full signal inventory, p4p callback-to-worker flow,
 model-confirmed readback publication, failed-set behavior, and BPM conversion.
 Run it with:
 
-```powershell
+```sh
 pixi run check
 ```
 
-From `sh`, the command is the same:
+Without Pixi, compile and run the same standard-library test suite from the
+repository root:
 
 ```sh
-pixi run check
+python -m compileall -q iocs models tests
+python -m unittest discover -s tests -v
 ```
 
 The opt-in live check starts and stops its own `softIocPVA` and model-service
 processes, then compares all 768 EPICS readbacks with an independent Tao model:
 
-```powershell
-pixi run -e simulation python tests\check_live_pva.py
-```
-
-For `sh`:
-
 ```sh
 pixi run -e simulation python tests/check_live_pva.py
 ```
 
-Set `EPICS_BASE` to the EPICS Base installation before running the checker. Test
-logs are retained in the temporary directory printed by the script.
+From an active Python environment with `.[simulation]` installed, invoke the
+checker directly:
+
+```sh
+python tests/check_live_pva.py
+```
+
+Set `EPICS_BASE` to your EPICS installation before running the checker; it
+locates `softIocPVA` under `$EPICS_BASE/bin/`. Run it in the Python environment
+with PyTao and the bridge dependencies installed. Test logs are retained in
+the temporary directory printed by the checker.
