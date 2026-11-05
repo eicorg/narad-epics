@@ -1,3 +1,5 @@
+"""Immutable data exchanged between the parser, mapper, and renderer."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +10,8 @@ from typing import Mapping
 
 @dataclass(frozen=True, slots=True)
 class NaradSignal:
+    """Validated Narad signal fields needed by the EPICS mapping policy."""
+
     id: str
     kind: str
     aliases: tuple[str, ...]
@@ -23,6 +27,8 @@ class NaradSignal:
 
 @dataclass(frozen=True, slots=True)
 class SignalBinding:
+    """Relationship between a facility component and an explicit signal."""
+
     id: str
     subject: str
     predicate: str
@@ -30,11 +36,15 @@ class SignalBinding:
 
     @property
     def epics_alias(self) -> str:
+        """Return the binding ID normalized for use as an EPICS alias."""
+
         return self.id.replace(".", ":")
 
 
 @dataclass(frozen=True, slots=True)
 class EpicsRecord:
+    """Renderer-neutral representation of one EPICS database record."""
+
     record_type: str
     name: str
     aliases: tuple[str, ...]
@@ -44,6 +54,8 @@ class EpicsRecord:
 
 @dataclass(frozen=True, slots=True)
 class NaradDescription:
+    """Validated translation input with source-order signals and bindings."""
+
     source: Path
     component_ids: frozenset[str]
     signals: tuple[NaradSignal, ...]
@@ -59,6 +71,8 @@ class NaradDescription:
         signals: list[NaradSignal],
         bindings: list[SignalBinding],
     ) -> NaradDescription:
+        """Freeze parsed collections and build the signal lookup index."""
+
         signal_by_id = MappingProxyType({signal.id: signal for signal in signals})
         return cls(
             source=source,

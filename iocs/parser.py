@@ -1,3 +1,9 @@
+"""Load Narad YAML and validate the subset required for EPICS translation.
+
+Parsing records all discoverable structural, reference, role, and EPICS-name
+problems before raising one :class:`NaradValidationError`.
+"""
+
 from __future__ import annotations
 
 import re
@@ -26,6 +32,12 @@ _PREDICATE_ROLES = {
 
 
 def load_narad_description(path: str | Path) -> NaradDescription:
+    """Load and validate a Narad YAML file into immutable translation models.
+
+    Raises ``NaradValidationError`` with all detected issues. File-system
+    errors are left to the caller so CLI and library users can handle them.
+    """
+
     source = Path(path).resolve()
     issues: list[ValidationIssue] = []
 
@@ -55,6 +67,8 @@ def load_narad_description(path: str | Path) -> NaradDescription:
 
 
 def _parse_component_ids(value: Any, issues: list[ValidationIssue]) -> set[str]:
+    """Collect component IDs used to validate binding subjects."""
+
     components = _list(value, "facility.components", issues)
     component_ids: set[str] = set()
     for index, value in enumerate(components):
@@ -67,6 +81,8 @@ def _parse_component_ids(value: Any, issues: list[ValidationIssue]) -> set[str]:
 
 
 def _parse_signals(value: Any, issues: list[ValidationIssue]) -> list[NaradSignal]:
+    """Convert structurally valid signal entries into typed models."""
+
     raw_signals = _list(value, "facility.signals", issues)
     signals: list[NaradSignal] = []
     for index, value in enumerate(raw_signals):
@@ -116,6 +132,8 @@ def _parse_signals(value: Any, issues: list[ValidationIssue]) -> list[NaradSigna
 
 
 def _parse_bindings(value: Any, issues: list[ValidationIssue]) -> list[SignalBinding]:
+    """Convert structurally valid signal bindings into typed models."""
+
     raw_bindings = _list(value, "facility.signal_bindings", issues)
     bindings: list[SignalBinding] = []
     for index, value in enumerate(raw_bindings):
@@ -136,6 +154,8 @@ def _validate_description(
     bindings: list[SignalBinding],
     issues: list[ValidationIssue],
 ) -> None:
+    """Validate uniqueness, references, mapping support, roles, and names."""
+
     signal_by_id: dict[str, NaradSignal] = {}
     for index, signal in enumerate(signals):
         location = f"facility.signals[{index}].id"
@@ -217,6 +237,8 @@ def _validate_epics_name(
     label: str,
     issues: list[ValidationIssue],
 ) -> None:
+    """Append EPICS length or character violations to ``issues``."""
+
     if len(value) > _MAX_EPICS_NAME_LENGTH:
         issues.append(
             ValidationIssue(
@@ -233,6 +255,8 @@ def _validate_epics_name(
 def _mapping(
     value: Any, location: str, issues: list[ValidationIssue]
 ) -> Mapping[str, Any]:
+    """Return a mapping or record a type issue and return an empty fallback."""
+
     if isinstance(value, Mapping):
         return value
     issues.append(ValidationIssue(location, "expected a mapping"))
@@ -240,6 +264,8 @@ def _mapping(
 
 
 def _list(value: Any, location: str, issues: list[ValidationIssue]) -> list[Any]:
+    """Return a list or record a type issue and return an empty fallback."""
+
     if isinstance(value, list):
         return value
     issues.append(ValidationIssue(location, "expected a list"))
@@ -252,6 +278,8 @@ def _text(
     location: str,
     issues: list[ValidationIssue],
 ) -> str:
+    """Read a required non-empty string field and record invalid values."""
+
     value = mapping.get(name)
     if isinstance(value, str) and value:
         return value
@@ -260,6 +288,8 @@ def _text(
 
 
 def _text_list(value: Any, location: str, issues: list[ValidationIssue]) -> list[str]:
+    """Read a list of non-empty strings while retaining all item errors."""
+
     values = _list(value, location, issues)
     result: list[str] = []
     for index, item in enumerate(values):

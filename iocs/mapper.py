@@ -1,3 +1,9 @@
+"""Map validated Narad signals to renderer-neutral EPICS records.
+
+This module owns record-type selection, aliases, metadata, display fields, and
+the explicit defaults used by the repository's simulation IOC.
+"""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -17,6 +23,13 @@ _STRING_SIMULATION_VALUE = "UNKNOWN"
 
 
 def map_description(description: NaradDescription) -> tuple[EpicsRecord, ...]:
+    """Map every explicit signal to one record while preserving source order.
+
+    Binding IDs become EPICS aliases and metadata. Numeric records start at
+    zero, string statuses at ``UNKNOWN``, and ``UDF=0`` marks those simulation
+    defaults as defined.
+    """
+
     bindings_by_signal: dict[str, list[SignalBinding]] = defaultdict(list)
     for binding in description.bindings:
         bindings_by_signal[binding.object].append(binding)

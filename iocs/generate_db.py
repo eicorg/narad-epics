@@ -1,3 +1,9 @@
+"""Command-line orchestration for Narad-to-EPICS database generation.
+
+The command composes the package APIs without adding mapping behavior. Use
+``--check`` to run parsing and mapping without writing a database.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -12,6 +18,8 @@ from .renderer import render_database, write_database
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
+    """Run validation or generation and return a process-style status code."""
+
     parser = _argument_parser()
     options = parser.parse_args(arguments)
     if not options.check and options.output is None:
@@ -38,6 +46,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
 
 def _argument_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser shared by the console script and module entry."""
+
     parser = argparse.ArgumentParser(
         description="Translate explicit Narad signals into an EPICS database."
     )

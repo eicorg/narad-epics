@@ -1,4 +1,9 @@
-"""Narad-to-EPICS translation toolkit."""
+"""Public API for translating Narad descriptions into EPICS databases.
+
+Typical use follows ``load_narad_description`` -> ``map_description`` ->
+``render_database``. The parser owns validation, models carry immutable data,
+and the renderer has no knowledge of the source YAML schema.
+"""
 
 from .errors import NaradValidationError, ValidationIssue
 from .mapper import map_description

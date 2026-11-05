@@ -1,3 +1,9 @@
+"""Generate a Phoebus overview from signal-bearing Narad components.
+
+Each component becomes an Embedded Display that supplies exact PV names as
+macros to a reusable row display selected by component kind.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -48,6 +54,8 @@ SUPPORTED_COMPONENTS = {
 
 @dataclass(frozen=True)
 class EmbeddedRow:
+    """One reusable child display plus the macros for a component instance."""
+
     component_id: str
     component_kind: str
     child_display: str
@@ -55,6 +63,12 @@ class EmbeddedRow:
 
 
 def build_rows(source: Path) -> tuple[EmbeddedRow, ...]:
+    """Build source-ordered embedded rows for all signal-bearing components.
+
+    Unsupported component kinds or incomplete expected signal sets raise
+    ``ValueError`` rather than generating a partially wired display.
+    """
+
     description = load_narad_description(source)
     raw = yaml.safe_load(source.read_text(encoding="utf-8"))
     component_kinds = {
@@ -111,6 +125,8 @@ def build_rows(source: Path) -> tuple[EmbeddedRow, ...]:
 
 
 def render_overview(rows: tuple[EmbeddedRow, ...], source: Path) -> str:
+    """Render embedded rows as a deterministic Phoebus ``.bob`` document."""
+
     header_height = 112
     display_height = header_height + len(rows) * ROW_HEIGHT + 20
     lines = [
@@ -197,12 +213,16 @@ def render_overview(rows: tuple[EmbeddedRow, ...], source: Path) -> str:
 
 
 def generate_overview(source: Path, output: Path) -> int:
+    """Build and atomically write an overview, returning its row count."""
+
     rows = build_rows(source)
     write_database(output, render_overview(rows, source))
     return len(rows)
 
 
 def main(arguments: list[str] | None = None) -> int:
+    """Run the OPI generator CLI and return a process-style status code."""
+
     parser = argparse.ArgumentParser(
         description="Generate a macro-driven Phoebus component overview."
     )
