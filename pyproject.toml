@@ -12,12 +12,19 @@ dependencies = [
     "PyYAML>=6.0,<7.0",
 ]
 
+[project.optional-dependencies]
+simulation = [
+    "p4p>=4.2,<5.0",
+    "pytao>=1.4,<2.0",
+]
+
 [project.scripts]
 narad-epics-generate = "iocs.generate_db:main"
 narad-epics-generate-opis = "iocs.opis.generate_opis:main"
+narad-epics-model-service = "models.service:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["iocs"]
+packages = ["iocs", "models"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -29,8 +36,11 @@ python = ">=3.11,<3.15"
 [tool.pixi.pypi-dependencies]
 narad-epics = { path = ".", editable = true }
 
+[tool.pixi.environments]
+simulation = ["simulation"]
+
 [tool.pixi.tasks]
-compile = "python -m compileall -q iocs tests"
+compile = "python -m compileall -q iocs models tests"
 test = "python -m unittest discover -s tests -v"
 check = { depends-on = ["compile", "test"] }
 generate-toy-ring = "narad-epics-generate yaml-descriptions/toy_ring_narad_instance.yaml --output generated/toy_ring.db"
