@@ -21,10 +21,13 @@ simulation = [
 [project.scripts]
 narad-epics-generate = "iocs.generate_db:main"
 narad-epics-generate-opis = "iocs.opis.generate_opis:main"
-narad-epics-model-service = "iocs.pva_bridge:main"
+narad-epics-machine-service = "iocs.pva_bridge:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["iocs", "models"]
+packages = ["iocs", "machines"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"yaml-descriptions/toy_ring_narad_instance.yaml" = "yaml-descriptions/toy_ring_narad_instance.yaml"
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
@@ -40,7 +43,7 @@ narad-epics = { path = ".", editable = true }
 simulation = ["simulation"]
 
 [tool.pixi.tasks]
-compile = "python -m compileall -q iocs models tests"
+compile = "python -m compileall -q iocs machines tests"
 test = "python -m unittest discover -s tests -v"
 check = { depends-on = ["compile", "test"] }
 generate-toy-ring = "narad-epics-generate yaml-descriptions/toy_ring_narad_instance.yaml --output generated/toy_ring.db"
