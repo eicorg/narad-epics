@@ -14,20 +14,17 @@ from typing import Any
 import yaml
 
 from .errors import NaradValidationError, ValidationIssue
+from .field_policy import FIELD_POLICIES, RECORD_TYPES
 from .models import NaradDescription, NaradSignal, SignalBinding
 
 
 _EPICS_NAME = re.compile(r"^[A-Za-z0-9_+\-:\[\]<>;]+$")
 _MAX_EPICS_NAME_LENGTH = 60
-_RECORD_TYPES = {
-    ("Float", "Readback"): "ai",
-    ("Float", "Setpoint"): "ao",
-    ("String", "Status"): "stringin",
-}
 _PREDICATE_ROLES = {
     "pals:has_readback_signal": "Readback",
     "pals:has_setpoint_signal": "Setpoint",
     "pals:has_signal": "Status",
+    "pals:has_limit_signal": "RangeLimit",
 }
 
 
@@ -163,9 +160,14 @@ def _validate_description(
             issues.append(ValidationIssue(location, f"duplicate signal ID {signal.id!r}"))
         else:
             signal_by_id[signal.id] = signal
-        _validate_epics_name(signal.id, location, "record name", issues)
+        _validate_epics_name(signal.record_name, location, "record name", issues)
+        if signal.record_field is not None:
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", signal.record_field):
+                issues.append(ValidationIssue(location, "invalid EPICS field suffix"))
+            elif signal.record_field not in FIELD_POLICIES:
+                issues.append(ValidationIssue(location, f"unsupported EPICS field {signal.record_field!r}"))
         combination = (signal.native_data_type, signal.signal_role)
-        if combination not in _RECORD_TYPES:
+        if signal.record_field is None and combination not in RECORD_TYPES:
             issues.append(
                 ValidationIssue(
                     f"facility.signals[{index}]",
@@ -174,6 +176,19 @@ def _validate_description(
                     f"signal_role={signal.signal_role!r}",
                 )
             )
+
+    for index, signal in enumerate(signals):
+        if signal.record_field is None:
+            continue
+        location = f"facility.signals[{index}]"
+        parent = signal_by_id.get(signal.record_name)
+        if parent is None or parent.record_field is not None:
+            issues.append(ValidationIssue(location, "field requires an existing standalone parent record"))
+            continue
+        policy = FIELD_POLICIES.get(signal.record_field)
+        if policy is not None:
+            for message in policy.validation_errors(signal, parent):
+                issues.append(ValidationIssue(location, message))
 
     binding_ids: set[str] = set()
     namespace = set(signal_by_id)

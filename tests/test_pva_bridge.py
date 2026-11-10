@@ -87,7 +87,7 @@ class PVABridgeTests(unittest.TestCase):
         self.assertTrue(all(s.noise_rms == 0.01 for s in currents))
         self.assertTrue(all(s.noise_rms == 0.1 for s in bpms))
         self.assertFalse(
-            any(":Status" in signal.pv for signal in setpoints + readbacks)
+            any(":Status" in signal.pv or "." in signal.pv for signal in setpoints + readbacks)
         )
 
     def test_confirmed_current_and_bpm_conversion_after_set(self):

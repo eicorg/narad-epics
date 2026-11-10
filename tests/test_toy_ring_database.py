@@ -21,14 +21,14 @@ class ToyRingDatabaseTests(unittest.TestCase):
         cls.record_by_name = {record.name: record for record in cls.records}
 
     def test_record_inventory_matches_explicit_signals(self) -> None:
-        self.assertEqual(len(self.records), len(self.description.signals))
+        self.assertEqual(len(self.records), sum(signal.record_field is None for signal in self.description.signals))
         self.assertEqual(
             Counter(record.record_type for record in self.records),
             Counter({"ai": 768, "ao": 384, "stringin": 384}),
         )
         self.assertEqual(
             sum(len(record.aliases) for record in self.records),
-            len(self.description.bindings),
+            sum(self.description.signal_by_id[b.object].record_field is None for b in self.description.bindings),
         )
 
     def test_representative_records_preserve_mapping_and_binding_metadata(self) -> None:
@@ -71,6 +71,16 @@ class ToyRingDatabaseTests(unittest.TestCase):
             alias="inst:ES12_T1:horizontal_magnet_status_binding",
             binding_id="inst:ES12_T1.horizontal_magnet_status_binding",
         )
+
+    def test_all_current_setpoints_have_simulation_range_defaults(self) -> None:
+        setpoints = [r for r in self.records if r.record_type == "ao"]
+        self.assertEqual(len(setpoints), 384)
+        for record in setpoints:
+            self.assertIn(("DRVL", "-50"), record.fields)
+            self.assertIn(("DRVH", "50"), record.fields)
+            self.assertNotIn(".", record.name)
+            for field in ("DRVL", "DRVH"):
+                self.assertIn((f"narad{field}SignalId", f"{record.name}.{field}"), record.info_items)
 
     def test_checked_database_matches_current_renderer_output(self) -> None:
         self.assertTrue(self.artifact.is_file(), "generate generated/toy_ring.db")

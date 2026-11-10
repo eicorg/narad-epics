@@ -124,17 +124,18 @@ layers:
 - `facility.beamlines` describes the periodic ring that contains those
 	components.
 - `facility.signals` declares the control-system signals that should be
-	exposed as EPICS records.
+	exposed as EPICS records or record fields.
 - `facility.signal_bindings` associates components with signals.
 
-The current document contains 1,536 signals and 1,536 signal bindings. Its
-signal inventory is:
+The current document contains 2,304 signals and 2,304 signal bindings, mapped
+to 1,536 records. Its signal inventory is:
 
 | Narad data type | Narad role | Unit | Count | Example |
 | --- | --- | --- | ---: | --- |
 | `Float` | `Readback` | `mm` or `A` | 768 | `inst:es12-bpm0:X-RB` |
 | `Float` | `Setpoint` | `A` | 384 | `inst:es12-t1:PS:H:Current-SP` |
 | `String` | `Status` | `none` | 384 | `inst:es12-t1:PS:H:Status` |
+| `Float` | `RangeLimit` | `A` | 768 | `inst:es12-t1:PS:H:Current-SP.DRVL` |
 
 These names and controls are illustrative. They do not represent operational
 EIC controls.
@@ -184,6 +185,7 @@ The first translator version uses this closed mapping table:
 | `Float` | `Readback` | `ai` | Analog measured value |
 | `Float` | `Setpoint` | `ao` | Analog writable command |
 | `String` | `Status` | `stringin` | Text state with no declared enumeration |
+| `Float` | `RangeLimit` | Parent `ao` field | `.DRVL` or `.DRVH`, not a separate record |
 
 Any other combination is a validation error. In particular, status signals do
 not map to `bi` or `mbbi` because the YAML does not define finite states or
@@ -191,14 +193,14 @@ numeric state values.
 
 ### Record names and aliases
 
-The signal `id` is preserved exactly as the EPICS record name, including the
+For standalone signals, `id` is preserved exactly as the EPICS record name, including the
 `inst:` prefix:
 
 ```text
 inst:es12-bpm0:X-RB
 ```
 
-Each binding `id` becomes an alias for the record referenced by its `object`.
+Each standalone signal binding `id` becomes an alias for the record referenced by its `object`.
 EPICS reserves `.` as the separator between a record and one of its fields, so
 the translator replaces every `.` in a binding ID with `:`:
 
@@ -230,19 +232,56 @@ within the IOC namespace. Alias uniqueness is checked after normalization.
 
 | Narad field | EPICS output | Policy |
 | --- | --- | --- |
-| `id` | Record name | Preserved exactly |
-| Binding `id` | `alias(...)` | Replace `.` with `:` |
-| Binding `id` | `info(naradBindingIdN, ...)` | Preserve exactly in source order |
+| Standalone signal `id` | Record name | Preserved exactly |
+| Standalone signal binding `id` | `alias(...)` | Replace `.` with `:` |
+| Standalone signal binding `id` | `info(naradBindingIdN, ...)` | Preserve exactly in source order |
 | `native_description` | `DESC` | Truncate to EPICS' 40-character limit |
 | `native_unit` | `EGU` | Emit for analog records unless value is `none` |
 | `native_data_type: Float` | `PREC` | Default to `3` |
 | `native_data_type: Float` | `VAL` | Simulation default `0` |
 | `native_data_type: String` | `VAL` | Simulation default `UNKNOWN` |
-| All supported signals | `UDF` | Set to `0` so the simulation default is defined |
+| Standalone signals | `UDF` | Set to `0` so the simulation default is defined |
 
-No range, alarm, or conversion fields are inferred. The YAML does not provide
-enough information to assign `HOPR`, `LOPR`, `DRVH`, `DRVL`, `HIHI`, `HIGH`,
-`LOW`, `LOLO`, or their severities safely.
+`RangeLimit` signals with `pals:has_limit_signal` bindings address `.DRVL` or
+`.DRVH` on an existing `Float` magnet-current setpoint in amperes. They do not
+create separate records. The mapper initializes declared fields to -50 A
+(`DRVL`) and +50 A (`DRVH`), using the shared `FIELD_POLICIES` registry in
+`iocs/field_policy.py`. The +/-50 A values are arbitrary guesses for the toy
+simulation, not values derived from YAML, Tao, calibration, or equipment
+specifications. They are not validated operating or safety limits. The YAML
+currently supplies no numeric limit values, and per-device overrides are not
+implemented.
+
+Requiring these range signals to belong to current setpoints is the current
+policy for `.DRVL`/`.DRVH`, not a general rule for `RangeLimit`. Other range
+meanings, parent record types, and fields need explicit policies.
+Undeclared limit fields are left at EPICS defaults.
+
+Limit signal IDs and binding IDs are preserved on the parent record as
+`naradDRVLSignalId` / `naradDRVHSignalId` and indexed
+`naradDRVLBindingIdN` / `naradDRVHBindingIdN` info items. Limit bindings do not
+create record aliases: access the fields through `record.DRVL` / `record.DRVH`.
+The existing OPI displays continue to show standalone signals, and the Tao
+bridge skips all field references. See [bridge mapping behavior](iocs/BRIDGE.md#signals-excluded-from-tao-mapping).
+
+No display-range, alarm, or conversion fields are inferred (`HOPR`, `LOPR`,
+`HIHI`, `HIGH`, `LOW`, `LOLO`, or their severities).
+
+### Extending EPICS field support
+
+Address parsing is independent of `signal_role`: `record.FIELD` identifies a
+field reference; an ID without a dot identifies a standalone record. Field
+suffixes must use uppercase EPICS identifier syntax. The parser validates that
+the parent exists and that the field has a registered policy.
+
+To support another field, add a `FieldPolicy` in `iocs/field_policy.py` with
+compatible parent record types, signal and parent metadata requirements, and
+an initialization value. The parser and mapper share that registry. Unsupported
+fields fail validation rather than receiving guessed defaults. Binding predicate
+roles remain validated separately; new semantic roles may require a predicate
+entry in the parser. The Tao bridge skips all field references independently of
+role. Add policy tests when introducing a field; EPICS device support and runtime
+behavior still need to be considered for that field.
 
 ### Soft-record behavior
 

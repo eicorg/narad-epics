@@ -56,7 +56,12 @@ coordinates, and converts BPM meters to EPICS millimeters. See
 network discovery, and live validation.
 
 Quadrupole and sextupole family currents are exposed by the machine but have no
-signals in the checked database. The bridge leaves status records untouched.
+signals in the checked database. The bridge leaves status records untouched
+and skips all EPICS field references, including `.DRVL` and `.DRVH`, when
+mapping to Tao. The IOC initializes current limits to -50 A and +50 A; the
+bridge does not independently enforce them. See
+[signals excluded from Tao mapping](../iocs/BRIDGE.md#signals-excluded-from-tao-mapping)
+for details.
 
 Published readbacks include independent, zero-mean Gaussian noise: 0.1 mm RMS
 for each BPM coordinate and 0.01 A (10 mA) RMS for each current readback. Noise

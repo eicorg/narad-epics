@@ -77,7 +77,9 @@ def build_rows(source: Path) -> tuple[EmbeddedRow, ...]:
     }
     signals_by_component: dict[str, list[str]] = defaultdict(list)
     for binding in description.bindings:
-        signals_by_component[binding.subject].append(binding.object)
+        # Overview rows expose standalone controls/readbacks, not record fields.
+        if description.signal_by_id[binding.object].record_field is None:
+            signals_by_component[binding.subject].append(binding.object)
 
     rows = []
     for component_id, signal_ids in signals_by_component.items():
