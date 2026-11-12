@@ -18,7 +18,7 @@ class PhoebusDisplayTests(unittest.TestCase):
         cls.source = cls.root / "yaml-descriptions" / "toy_ring_narad_instance.yaml"
         cls.overview = cls.opi_dir / "toy_ring_overview.bob"
         cls.description = load_narad_description(cls.source)
-        cls.signal_ids = {signal.id for signal in cls.description.signals}
+        cls.signal_ids = {signal.id for signal in cls.description.signals if signal.record_field is None}
 
     def test_displays_are_valid_xml_with_supported_root(self) -> None:
         displays = sorted(self.opi_dir.rglob("*.bob"))
@@ -43,7 +43,7 @@ class PhoebusDisplayTests(unittest.TestCase):
             render_overview(build_rows(self.source), self.source),
         )
 
-    def test_embedded_rows_expand_to_every_toy_ring_signal_once(self) -> None:
+    def test_embedded_rows_expand_to_every_standalone_toy_ring_signal_once(self) -> None:
         root = ET.parse(self.overview).getroot()
         embedded = [
             widget for widget in root.iter("widget") if widget.get("type") == "embedded"

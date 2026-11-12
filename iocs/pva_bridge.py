@@ -79,7 +79,7 @@ def load_mapping(source: Path) -> tuple[list[MachineSignal], list[MachineSignal]
     setpoints: list[MachineSignal] = []
     readbacks: list[MachineSignal] = []
     for narad_signal in description.signals:
-        if narad_signal.signal_role == "Status":
+        if narad_signal.record_field is not None or narad_signal.signal_role == "Status":
             continue
         bound = subjects.get(narad_signal.id, set())
         if len(bound) != 1:

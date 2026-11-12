@@ -115,6 +115,25 @@ connects to all 1,152 numeric IOC PVs and creates p4p monitors for 384 current
 setpoints. p4p callbacks only enqueue updates; one worker serializes all access
 to the single Tao instance.
 
+### Signals excluded from Tao mapping
+
+`load_mapping()` skips standalone `Status` signals and every `record.FIELD`
+reference, independently of signal role. Status PVs are neither monitored nor
+updated; they retain `UNKNOWN` unless another client changes them.
+
+The 768 range-limit signals address `.DRVL` and `.DRVH` on the 384 current
+setpoint records. They do not create Tao variables or bridge monitors. The IOC
+database initializes these fields to -50 A and +50 A using
+[the shared field policy](field_policy.py). See the
+[field mapping guide](../README.md#extending-epics-field-support) for extension rules.
+
+The bridge does not independently enforce drive limits or synchronize field
+changes into Tao. It forwards setpoint monitor values from the IOC. Field
+references are also excluded from readback noise generation; existing current
+and BPM readback noise behavior is unchanged.
+
+### Setpoint updates
+
 For each changed setpoint, the worker:
 
 1. Sets the matching Tao steering current.
@@ -134,7 +153,8 @@ there is no clipping and no periodic noise refresh.
 The first value delivered by each monitor is ignored. Existing IOC setpoints
 are not replayed into Tao at startup, and readbacks remain at database defaults
 until a setpoint changes. Status records remain `UNKNOWN`. There is no polling,
-status generation, alarm handling, persistence, or current-limit enforcement.
+status generation, alarm handling, persistence, or independent bridge-side
+current-limit enforcement.
 An individual failed update is logged and the service continues monitoring.
 
 ## Network discovery

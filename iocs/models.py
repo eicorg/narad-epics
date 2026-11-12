@@ -24,6 +24,16 @@ class NaradSignal:
     native_unit: str
     access_protocol: str
 
+    @property
+    def record_name(self) -> str:
+        """Record portion of the EPICS address, independently of signal role."""
+        return self.id.partition(".")[0]
+
+    @property
+    def record_field(self) -> str | None:
+        """Optional field portion of the EPICS address."""
+        return self.id.partition(".")[2] if "." in self.id else None
+
 
 @dataclass(frozen=True, slots=True)
 class SignalBinding:

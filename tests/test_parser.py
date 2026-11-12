@@ -118,8 +118,8 @@ class ParserTests(unittest.TestCase):
 
         description = load_narad_description(source)
 
-        self.assertEqual(len(description.signals), 1536)
-        self.assertEqual(len(description.bindings), 1536)
+        self.assertEqual(len(description.signals), 2304)
+        self.assertEqual(len(description.bindings), 2304)
         self.assertEqual(
             description.signal_by_id["inst:es12-bpm0:X-RB"].native_unit,
             "mm",

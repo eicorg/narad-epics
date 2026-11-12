@@ -5,6 +5,13 @@ import io
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
+
+from iocs.field_policy import FIELD_POLICIES, FieldPolicy
+
+import yaml
+
+from iocs.errors import NaradValidationError
 from pathlib import Path
 
 from iocs.generate_db import main
@@ -147,6 +154,89 @@ class GenerationTests(unittest.TestCase):
         self.assertIn('    field(DESC, "Power supply \\"state\\" summary.")', rendered)
         self.assertNotIn("field(EGU, \"none\")", rendered)
         self.assertTrue(rendered.endswith("}\n"))
+
+    def write_limits(self, *, parent="inst:t1:PS:H:Current-SP", field="DRVL", unit="A") -> None:
+        document = yaml.safe_load(DESCRIPTION)
+        facility = document["facility"]
+        for suffix in (field, "DRVH"):
+            signal_id = f"{parent}.{suffix}"
+            facility["signals"].append(dict(
+                id=signal_id, kind="Signal", alias=["current_limit"],
+                signal_role="RangeLimit", source_system="EPICS",
+                native_description="Current limit", canonical_signal_type="MagnetCurrentRange",
+                quantity_kind="ElectricCurrent", native_data_type="Float",
+                native_unit=unit, access_protocol="EPICS PVAccess",
+            ))
+            facility["signal_bindings"].append(dict(
+                id=f"inst:T1.{suffix}_binding", subject="inst:T1",
+                predicate="pals:has_limit_signal", object=signal_id,
+            ))
+        # Fields may precede their parent in the source document.
+        facility["signals"].reverse()
+        self.source.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    def test_limits_initialize_parent_fields_and_preserve_metadata(self) -> None:
+        self.write_limits()
+        description = load_narad_description(self.source)
+        records = map_description(description)
+        self.assertEqual(len(description.signals), 5)
+        self.assertEqual(len(records), 3)
+        record = next(r for r in records if r.record_type == "ao")
+        self.assertIn(("DRVL", "-50"), record.fields)
+        self.assertIn(("DRVH", "50"), record.fields)
+        self.assertIn(("naradDRVLSignalId", record.name + ".DRVL"), record.info_items)
+        self.assertIn(("naradDRVLBindingId0", "inst:T1.DRVL_binding"), record.info_items)
+        self.assertNotIn("inst:T1:DRVL_binding", record.aliases)
+        rendered = render_database(records, source=self.source)
+        self.assertIn('field(DRVL, "-50")', rendered)
+        self.assertNotIn('record(ao, "' + record.name + '.DRVL")', rendered)
+        for other in records:
+            if other is not record:
+                self.assertFalse({"DRVL", "DRVH"} & dict(other.fields).keys())
+
+    def test_rejects_invalid_limit_targets_and_units(self) -> None:
+        for arguments, message in (
+            ({"parent": "inst:missing"}, "existing standalone parent record"),
+            ({"parent": "inst:bpm1:X-RB"}, "requires parent record type"),
+            ({"field": "HOPR"}, "unsupported EPICS field"),
+            ({"unit": "mA"}, "requires native_unit"),
+        ):
+            with self.subTest(arguments=arguments):
+                self.write_limits(**arguments)
+                with self.assertRaisesRegex(NaradValidationError, message):
+                    load_narad_description(self.source)
+
+    def test_field_address_is_independent_of_role_and_uses_shared_policy(self) -> None:
+        self.write_limits(field="HIGH")
+        document = yaml.safe_load(self.source.read_text())
+        signal = next(s for s in document["facility"]["signals"] if s["id"].endswith(".HIGH"))
+        signal["signal_role"] = "Readback"
+        binding = next(b for b in document["facility"]["signal_bindings"] if b["object"].endswith(".HIGH"))
+        binding["predicate"] = "pals:has_readback_signal"
+        self.source.write_text(yaml.safe_dump(document))
+        policies = dict(FIELD_POLICIES)
+        policies["HIGH"] = FieldPolicy(
+            parent_record_types=("ao",),
+            signal_requirements=(("signal_role", "Readback"),),
+            parent_requirements=(), initial_value="40",
+        )
+        with patch("iocs.parser.FIELD_POLICIES", policies), patch("iocs.mapper.FIELD_POLICIES", policies):
+            description = load_narad_description(self.source)
+            field_signal = description.signal_by_id[signal["id"]]
+            self.assertEqual(field_signal.record_field, "HIGH")
+            self.assertEqual(field_signal.record_name, "inst:t1:PS:H:Current-SP")
+            records = map_description(description)
+        self.assertEqual(len(records), 3)
+        parent = next(r for r in records if r.record_type == "ao")
+        self.assertIn(("HIGH", "40"), parent.fields)
+        self.assertIn(("naradHIGHSignalId", signal["id"]), parent.info_items)
+
+    def test_rejects_malformed_field_addresses(self) -> None:
+        for field in ("", "drvl", "DRVL.EXTRA"):
+            with self.subTest(field=field):
+                self.write_limits(field=field)
+                with self.assertRaisesRegex(NaradValidationError, "invalid EPICS field suffix"):
+                    load_narad_description(self.source)
 
     def test_cli_check_validates_without_writing_a_database(self) -> None:
         output = io.StringIO()
