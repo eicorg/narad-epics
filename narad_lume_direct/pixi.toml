@@ -1,0 +1,37 @@
+[workspace]
+name = "narad-lume-direct"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = "3.12.*"
+bmad = "20261110.0.*"
+pytao = "1.4.1.*"
+epics-base = "7.0.9.0.*"
+p4p = "4.2.2.*"
+ipython = ">=8,<10"
+cmake = ">=3.20"
+ninja = "*"
+git = "*"
+
+[pypi-dependencies]
+palsparserpy = { git = "https://github.com/pals-project/PALSParserPy.git", rev = "4dd22178ab61f4f1e04dbe9533e0efc3e7c660f6" }
+linkml = "==1.10.0"
+lume-base = "==0.6.0"
+lume-bmad = "==0.1.1"
+lume-pva = "==0.5.0"
+pvua = "==1.0.1"
+pyepics = "==3.5.10"
+
+[target.linux-64.dependencies]
+cxx-compiler = "*"
+pcaspy = "0.8.1.*"
+
+[target.osx-arm64.pypi-dependencies]
+pcaspy = "==0.8.1"
+
+[tasks]
+setup = "python setup_native.py"
+serve-fodo = { cmd = "python serve.py", depends-on = ["setup"] }
+serve-ring = { cmd = "python serve.py --lattice toy_ring.no_alias.pals.yaml --hardware toy_ring.hardware.yaml --prefix RING:", depends-on = ["setup"] }
+verify-ring = { cmd = "python verify_ring.py", depends-on = ["setup"] }

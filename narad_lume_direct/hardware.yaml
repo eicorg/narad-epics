@@ -1,0 +1,21 @@
+# Each supply owns a current setpoint and readback. PALS defines the magnet
+# targets of the referenced controller variable.
+supplies:
+  ps_qf: {controller: quad_supplies, variable: f_current}
+  ps_qd: {controller: quad_supplies, variable: d_current}
+  ps_h_f1: {controller: h_corrector_supplies, variable: f1_current}
+  ps_h_d1: {controller: h_corrector_supplies, variable: d1_current}
+  ps_h_f2: {controller: h_corrector_supplies, variable: f2_current}
+  ps_h_d2: {controller: h_corrector_supplies, variable: d2_current}
+  ps_v_f1: {controller: v_corrector_supplies, variable: f1_current}
+  ps_v_d1: {controller: v_corrector_supplies, variable: d1_current}
+  ps_v_f2: {controller: v_corrector_supplies, variable: f2_current}
+  ps_v_d2: {controller: v_corrector_supplies, variable: d2_current}
+
+# Each readout owns X and Y readbacks. The value identifies the PALS
+# Instrument occurrence used for the BPM and its NARAD IsPartOf edge.
+bpm_readouts:
+  readout_f1: bpm_f1
+  readout_d1: bpm_d1
+  readout_f2: bpm_f2
+  readout_d2: bpm_d2

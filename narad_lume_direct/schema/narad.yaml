@@ -1,0 +1,2672 @@
+id: https://w3id.org/pals-config
+name: pals_config
+version: 0.0.1
+title: PALS facility configuration
+description: >-
+  A lightweight LinkML schema for facility-agnostic accelerator facility configuration,
+  their beamline relationships, and associated control-system signals.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+
+# No _base on purpose. Bare identifiers in instance data (e.g. RF_LASER) are
+# made absolute by src/resolve_instance_ids.py, which prefixes them with file:///. That prefix
+# exists only so linkml-convert and n10s accept the ids; src/llm/graph_init.cypher removes it
+# again, so the Neo4j graph holds the bare ids. See the docstring in resolve_instance_ids.py.
+# There is no per-facility namespace: load one facility per graph.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pals_elementkinds: https://pals-project.readthedocs.io/en/latest/lattice-element-kinds.html#
+  pals_parametergroups: https://pals-project.readthedocs.io/en/latest/lattice-element-parameter-groups.html#
+  pals: https://pals-project.readthedocs.io/  # NEED TO CREATE with a w3id extension: used only in *_mappings to PALS documentation; not a resolvable vocabulary
+  pals_config: https://w3id.org/pals-config/  # NEED TO CREATE: vocabulary: classes, slots, predicates
+  schema: http://schema.org/  # must match linkml:types, which declares http:// (https:// breaks linkml-convert)
+  dcterms: http://purl.org/dc/terms/
+  sosa: http://www.w3.org/ns/sosa/
+  skos: http://www.w3.org/2004/02/skos/core#
+  unit: http://qudt.org/vocab/unit/
+  quantitykind: http://qudt.org/vocab/quantitykind/
+  RO: http://purl.obolibrary.org/obo/RO_
+  BFO: http://purl.obolibrary.org/obo/BFO_
+  saref: https://saref.etsi.org/core/
+  rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#
+  xsd: http://www.w3.org/2001/XMLSchema#
+
+default_prefix: pals_config
+default_range: string
+
+imports:
+  - linkml:types
+
+# NOTE WHEN GENERATING RDF/OWL:
+# mixins vs. is_a: by default, both edges look identical in plain OWL 
+# — there's no structural distinction between "true" taxonomic parent and mixin trait unless you intervene. 
+# This is why the --mixins-as-expressions argument exists: 
+# it keeps the subClassOf backbone limited to pure is_a edges, 
+# and re-expresses mixin relationships as existential restrictions (mixins some HasAssetInfo) via GCI axioms instead. 
+# Otherwise, mixins change the shape of the class graph, and you have a generator flag to control which shape you get.
+
+# REGARDING the unit for parameters: this will need to be a step in the alignment because UITF parameter units may not match PALS expected units
+# Example is pCentral (pc_ref), which is MeV/c in both UITF and CEBAF data but PALS expects eV. This is a known issue and will need to be addressed in the future.
+
+# Comments on id's for mag_ and elec_components, Identifiers, and Additional metadata
+# Currently each of these do not have an id slot.
+# This means the RDF generator mints a blank node, and blank nodes can create downstream problems:
+# * Blank node labels are assigned by traversal order. 
+#      Regenerate the same source data twice and you can get different blank node IDs both times.
+#      Blank nodes get skolemized into fresh synthetic IRIs on that run.
+#         Neo4j load strategy does MERGE-by-identifier, unidentified entries can't be merged - no way to tell which entry is the same, or the latest/most current version.
+#         A "wipe the graph and reload fresh each time" (not merge-based), then this is less of a problem.
+#   * Nodes with this issue cannnot rely on order of elements in a list, because the blank node IDs are not stable.
+
+types:
+  iso8601_datetime:
+    typeof: string
+    uri: xsd:dateTime
+    base: str
+    description: >-
+      Strict ISO 8601 date-time string allowing optional fractional seconds and timezones, 
+      e.g., 2024-06-05T14:30:00-05:00 for June 5th, 2024 at 14:30:00 (2:30 PM) with UTC timezone offset -05:00 (America/New_York).
+    pattern: '^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$'
+
+  isodate:
+    typeof: string
+    uri: xsd:date
+    base: str
+    description: >-
+      Strict ISO 8601 date string (YYYY-MM-DD).
+      e.g., 2024-06-05 for June 5th, 2024.
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+
+slots:
+  id:
+    identifier: true
+    required: true
+    range: string
+    description: A unique identifier for the instance.
+    close_mappings:
+      - pals:id
+
+  name:
+    description: >-
+      The name of the entity.
+      For example, the name of the component.
+    range: string
+  
+  alias:
+    description: An alternative name or identifier for the instance.
+    range: string
+    multivalued: true
+    close_mappings:
+      - pals:alias
+
+  kind:
+    required: true
+    designates_type: true
+    range: string
+    description: The LinkML class name of this instance, e.g. `Quadrupole` or `BeamProfileMonitor` (no prefix).
+    slot_uri: rdf:type
+    related_mappings:
+      - saref:DeviceKind
+  
+  subject:
+    slot_uri: rdf:subject
+    required: true
+
+  predicate:
+    slot_uri: rdf:predicate
+    required: true
+    designates_type: true
+    range: string # range: string with designates_type: means that the string MUST match a class name in the ontology, e.g. `Precedes` or `HasSignalRelation`.
+
+  object:
+    slot_uri: rdf:object
+    required: true
+  
+  functions:
+    description: >-
+      The function of the component, 
+      which can be used to identify the component across different source systems.
+    required: false
+  
+  beamline_relation:
+    description: >-
+      The relationship of the component to the beamline, 
+      which can be used to identify the component across different source systems.
+    required: true
+  
+  affiliation:
+    description: The affiliation of the author or component, as a ROR.
+    range: Affiliation
+    inlined: true
+  
+  description:
+    description: A human-readable description of the instance.
+    range: string
+  
+  identifiers:
+    description: A unique and ideally persistent identifier for the facility, such as a DOI or ROR.
+    range: Identifier
+    multivalued: true
+  
+  length:
+    description: Length of the element (arc length for bends).
+    range: float
+    close_mappings:
+      - pals:length
+
+  context:
+    range: RelationContextEnum
+    description: The frame of reference / domain in which this relationship is asserted to hold.
+    required: true
+
+  beamline_context:
+    range: BeamLine
+    description: >-
+      The specific BeamLine this relationship is defined with respect to (relevant when context=beamline_order).
+      Only an edge-property slot for edges that are defined with respect to a specific BeamLine.
+    required: false
+
+  distance_value:
+    description: >-
+      Distance value between two components in a relationship.
+      Only an edge-property slot for edges that require a distance value between two components in a relationship.
+    range: float
+    exact_mappings:
+      - quantitykind:Distance
+
+  distance_unit:
+    description: >-
+      Unit of the distance value between two components in a relationship.
+      Only an edge-property slot for edges that require a distance value between two components in a relationship.
+    range: UnitEnum
+    related_mappings:
+      - saref:UnitOfMeasure
+
+  tolerance_value:
+    description: >-
+      Tolerance value for the distance between two components in a relationship.
+      Only an edge-property slot for edges that require a tolerance value between two components in a relationship.
+    range: float
+
+  tolerance_unit:
+    description: >-
+      Unit of the tolerance value for the distance between two components in a relationship.
+      Only an edge-property slot for edges that require a tolerance value between two components in a relationship.
+    range: UnitEnum
+    related_mappings:
+      - saref:UnitOfMeasure
+
+  coordinates:
+    range: CoordinateSet
+    inlined: true
+    description: >-
+      A set of coordinates that define the spatial relationship between the two components.
+      Only an edge-property slot for edges that require a set of coordinates to define the spatial relationship between two components in a relationship.
+    recommended: true
+
+classes:
+  #---- Root Class ----------------------------------------------------------
+  Node:
+    abstract: true
+    description: >-
+      Abstract base class for all node entities in the accelerator core ontology.
+      This differentiates nodes from edges (relationships) in the ontology.
+      This class is not intended to be instantiated directly, but serves as a common ancestor for all other classes.
+      Allows for the use of kind: as a discriminator for the type of node in the ontology.
+    slots:
+      - id
+      - kind
+      - alias
+
+  PALSAccelerator:
+    description: Root container for accelerator core components, semantic signals, and local bindings.
+    tree_root: true
+    attributes:
+      version:
+        description: Version of the representation of a particle accelerator and its operations.
+        pattern: "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+        range: string
+        required: false
+        ifabsent: string(0.0.0)
+      schema_version:
+        description: >-
+          Version of the schema used for this representation of a particle accelerator and its operations.
+          Should follow the semantic versioning convention (MAJOR.MINOR.PATCH).
+          Should match the schema version of the NARAD/PALS instance configuration schema being used.
+        pattern: "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+        range: string
+        required: false
+        ifabsent: string(0.0.1)
+      temporal_coverage:
+        range: TemporalCoverageClass
+        required: false
+        description: >-
+          Temporal coverage for time-based datasets, if applicable.
+          Container for elements describing the start_date and end_date of the data instance's temporal coverage 
+          in ISO 8601 datetime format YYYY-MM-DDTHH:MM:SS±hh:mm for offset (e.g., 2024-06-05T14:30:00-04:00) or YYYY-MM-DDTHH:MM:SSZ for UTC (e.g., 2024-06-05T14:30:00Z).
+          Use temporal_coverage when the dataset describes a specific historical or projected time period.
+          This may not apply to simulations where temporal coverage of a specific facility during a specific time is not relevant.
+        related_mappings:
+          - dcterms:temporal
+          - schema:temporalCoverage
+      authors:
+        description: Contains the authorship information for this representation of an accelerator facility and its operations.
+        range: Author
+        multivalued: true
+        inlined_as_list: true
+      created_date:
+        range: isodate
+        description: >-
+          The date the PALS/NARAD data instance of the facility configuration was first created, in ISO 8601 format (YYYY-MM-DD). 
+          Provides temporal context for the data instance and can be used for tracking its age and relevance.
+        required: true
+      updated_date:
+          range: isodate
+          description: >-
+            The date the data instance for the facility configuration was last updated, in ISO 8601 format (YYYY-MM-DD). Date of most recent update; revise on every change/version to the data instance, including minor edits and version updates. 
+            This provides temporal context for the data instance and can be used for tracking its currency and maintenance.
+      change_log:
+        range: ChangeLogEntryClass
+        multivalued: true
+        inlined: true
+        inlined_as_list: true
+        description: >-
+          Running history of meaningful changes to a data instance of a facility's configuration.
+          Add a new entry every time the instance is updated.
+          Do not overwrite or delete prior entries.
+          If there have been no changes since creation, include a single entry with the creation date and the summary 'Initial creation'.
+        required: true
+      notes:
+        description: Additional notes or comments about the representation of a particle accelerator and its operations.
+        range: string
+        multivalued: true
+        inlined_as_list: true
+      facility:
+        description: A facility that contains lattice elements (physical and virtual), beamlines, parameter set commands, signals, etc.
+        range: Facility
+    slots:
+      - kind
+      - description
+      - affiliation
+  
+  TemporalCoverageClass:
+    description: >-
+      Temporal coverage for time-based datasets, if applicable.
+        Container for elements describing the start_date and end_date of the data instance's temporal coverage 
+        in ISO 8601 datetime format YYYY-MM-DDTHH:MM:SS±hh:mm for offset (e.g., 2024-06-05T14:30:00-04:00) or YYYY-MM-DDTHH:MM:SSZ for UTC (e.g., 2024-06-05T14:30:00Z).
+        Use temporal_coverage when the dataset describes a specific historical or projected time period.
+        This may not apply to simulations where temporal coverage of a specific facility during a specific time is not relevant.
+    attributes:
+      start_date:
+        range: iso8601_datetime
+        description: "Start date of the dataset's temporal coverage in ISO 8601 format (YYYY-MM-DDTHH:MM:SS±hh:mm for offset or YYYY-MM-DDTHH:MM:SSZ for UTC)."
+        related_mappings:
+          - schema:temporalCoverage
+        narrow_mappings:
+          - dcterms:date
+      end_date:
+        range: iso8601_datetime
+        description: "End date of the dataset's temporal coverage in ISO 8601 format (YYYY-MM-DDTHH:MM:SS±hh:mm for offset or YYYY-MM-DDTHH:MM:SSZ for UTC)."
+        related_mappings:
+          - schema:temporalCoverage
+        narrow_mappings:
+          - dcterms:date
+    slots:
+      - description
+    slot_usage:
+      description:
+        description: Detailed description of the temporal coverage.
+
+  Author:
+    description: Contains authorship information for a representation of an accelerator facility and its operations.
+    attributes:
+      email:
+        description: The email address of the author.
+        range: string
+        pattern: "^[^@]+@[^@]+\\.[^@]+$"
+      orcid:
+        description: The ORCID identifier of the author.
+        range: string
+        pattern: "^https://orcid\\.org/\\d{4}-\\d{4}-\\d{4}-\\d{3}[\\dX]$"
+        related_mappings:
+          - schema:creator
+    slots:
+      - name
+      - affiliation
+    
+  
+  ChangeLogEntryClass:
+    description: "An individual entry in the change log, documenting a specific change to the data instance."
+    attributes:
+      change_date:
+        range: isodate
+        description: The date the change was made, in ISO 8601 format (YYYY-MM-DD).
+        required: true
+      instance_version:
+        range: string
+        pattern: "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+        description: >-
+          The version of the data instance that was changed.
+          If this is the initial creation, it should be set to 0.0.0.
+        required: true
+      summary:
+        range: string
+        description: A brief summary of the change.
+        required: true
+        exact_mappings:
+          - skos:changeNote
+
+  Facility:
+    description: A facility that houses one or more accelerators.
+    attributes:
+      components:
+        description: A list of physical components in the accelerator system.
+        range: Component
+        multivalued: true
+        inlined_as_list: true
+      beamlines:
+        description: A list of beamlines in the accelerator system.
+        range: BeamLine
+        multivalued: true
+        inlined_as_list: true
+      signals:
+        description: A list of signals in the accelerator system.
+        range: Signal
+        multivalued: true
+        inlined_as_list: true
+      signal_bindings:
+        description: A list of signal bindings in the accelerator system (Component <-> Signal relationships).
+        range: SignalBinding
+        multivalued: true
+        inlined_as_list: true
+      component_relations:
+        description: A list of component relations in the accelerator system (Component <-> Component relationships).
+        range: ComponentRelation
+        multivalued: true
+        inlined_as_list: true
+    slots:
+      - identifiers
+  
+  Affiliation:
+    description: Contains affiliation information for an author or component, such as a ROR.
+    slots:
+      - id
+      - name
+      - identifiers
+
+  Identifier:
+    description: A unique, and ideally persistent, identifier for a facility, such as a DOI or ROR.
+    attributes:
+      identifier_type:
+        description: The type of identifier, such as DOI | PURL | ROR | LOCAL | URL | ARK.
+        range: IdentifierTypeEnum
+      identifier_value:
+        description: The value of the identifier.
+        range: string
+
+  # --- Mixin classes ----------------------------------------------------------
+  ParamGroup:
+    abstract: true
+    description: >-
+      Abstract base for inlined PALS parameter-group objects, giving each an
+      identifier so it resolves to a stable node/IRI rather than a blank node
+      when exported to RDF.
+    slots:
+      - id
+
+  HasMetaP:
+    mixin: true
+    attributes:
+      MetaP:
+        description: A mixin for metadata parameters that are aligned with PALS MetaP (Metadata Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: MetaParamGroup
+        inlined: true
+  
+  MetaParamGroup:
+    is_a: ParamGroup
+    description: Mixin class for metadata parameters that are aligned with PALS MetaP (Metadata Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+    attributes:
+      label:
+        description: A label string. 
+        range: string
+        close_mappings:
+          - pals:label
+      additional_metadata:
+        description: Additional metadata or annotations for the instance.
+        range: AdditionalMetadata
+        multivalued: true
+        inlined_as_list: true
+    slots:
+      - description
+      - alias
+    broad_mappings:
+      - pals:MetaP
+  
+  HasFloorP:
+    mixin: true
+    attributes:
+      FloorP:
+        description: A mixin for floor plan parameters that are aligned with PALS FloorP (Floor Plan Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: FloorParamGroup
+        inlined: true
+
+  FloorParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin class for floor plan parameters that are aligned with PALS FloorP (Floor Plan Parameters) 
+      for interoperability with the Particle Accelerator Language Standard (PALS).
+    attributes:
+      x:
+        description: Global X coordinate in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:x
+        aliases:
+          - x_coordinate
+          - ModelX
+          - x coordinate
+      y:
+        description: Global Y coordinate in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:y
+        aliases:
+          - y_coordinate
+          - ModelY
+          - y coordinate
+      z:
+        description: Global Z coordinate in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:z
+        aliases:
+          - z_coordinate
+          - ModelZ
+          - z coordinate
+      theta:
+        description: Orientation angle around the Y-axis in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:theta
+        aliases:
+          - theta_angle
+          - ModelYaw
+          - Model_Yaw
+      phi:
+        description: Rotation around the X-axis in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:phi
+        aliases:
+          - phi_angle
+          - ModelPitch
+          - Model_Pitch
+      psi:
+        description: Rotation around the Z-axis in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:psi
+        aliases:
+          - psi_angle
+          - Model_Roll
+          - Rotation
+    broad_mappings:
+      - pals:FloorP
+
+  HasBodyShiftP:
+    mixin: true
+    attributes:
+      BodyShiftP:
+        description: A mixin for floor plan shift parameters that are aligned with PALS BodyShiftP (Floor Plan Shift Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: BodyShiftParamGroup
+        inlined: true
+  
+  BodyShiftParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin class for floor plan shift parameters that are aligned with PALS BodyShiftP (Floor Plan Shift Parameters) 
+      for interoperability with the Particle Accelerator Language Standard (PALS).
+    attributes:
+      x_offset:
+        description: Shift in the X direction in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:x_offset
+        aliases:
+          - delta_x
+          - x_shift
+          - GlobalOffsetX
+      y_offset:
+        description: Shift in the Y direction in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:y_offset
+        aliases:
+          - delta_y
+          - y_shift
+          - GlobalOffsetY
+      z_offset:
+        description: Shift in the Z direction in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:z_offset
+        aliases:
+          - delta_z
+          - z_shift
+          - GlobalOffsetZ
+      x_rot:
+        description: Rotation around the X-axis in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:x_rot
+        aliases:
+          - delta_phi
+          - phi_shift
+          - GlobalOffsetPhi
+      y_rot:
+        description: Rotation around the Y-axis in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:y_rot
+        aliases:
+          - delta_theta
+          - theta_shift
+          - GlobalOffsetTheta
+      z_rot:
+        description: Rotation around the Z-axis in the facility floor plan.
+        range: float
+        close_mappings:
+          - pals:z_rot
+        aliases:
+          - delta_psi
+          - psi_shift
+          - GlobalOffsetPsi
+    broad_mappings:
+      - pals:BodyShiftP
+  
+  HasLongitudinalPlacementP:
+    mixin: true
+    attributes:
+      LongitudinalPlacementP:
+        description: A mixin for an element's extent and position along the longitudinal (beam-direction, "s") axis that are aligned with PALS LongitudinalPlacementP (Longitudinal Placement Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: LongitudinalPlacementParamGroup
+        inlined: true
+
+  LongitudinalPlacementParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for an element's extent and position along the longitudinal (beam-direction, "s") axis. 
+      Corresponds to PALS's ungrouped element parameters `length` and `s_position`.
+      One (or both) `length` or `s_position` must be present.
+    attributes:
+      s_position:
+        description: Longitudinal position of the element along the beamline.
+        range: float
+        close_mappings:
+          - pals:s_position
+        unit:
+          ucum_code: m
+    slots:
+      - length
+    rules:
+      - description: "An element must have a length and/or a position along the beamline."
+        preconditions:
+          slot_conditions:
+            id:
+              value_presence: PRESENT
+        postconditions:
+          any_of:
+            - slot_conditions:
+                length:
+                  value_presence: PRESENT
+            - slot_conditions:
+                s_position:
+                  value_presence: PRESENT
+  
+  HasReferenceP:
+    mixin: true
+    attributes:
+      ReferenceP:
+        description: >-
+          A mixin for reference parameters that are aligned with PALS ReferenceP (Reference Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: ReferenceParamGroup
+        inlined: true
+
+  ReferenceParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for reference parameters that are aligned with PALS ReferenceP (Reference Parameters) 
+      for interoperability with the Particle Accelerator Language Standard (PALS).
+    attributes:
+      species_ref:
+        description: A reference to a species or particle type, such as an ion, electron, or proton.
+        range: string
+        close_mappings:
+          - pals:species_ref
+      pc_ref:
+        description: "[MeV] Reference momentum times speed of light, i.e. beam momentum in MeV/c." # PALS asks for eV; UITF/CEBAF data is in MeV/c.
+        range: float
+        unit:
+          ucum_code: MeV
+        close_mappings:
+          - pals:pc_ref
+        aliases:
+          - pCentral
+      E_tot_ref:
+        description: "[eV] Reference total energy"
+        range: float
+        close_mappings:
+          - pals:E_tot_ref
+        unit:
+          ucum_code: eV # DM: leaving this here, this is PALS standard
+        aliases:
+          - ETotal
+      time_ref:
+        description: "[s] Reference time"
+        range: float
+        unit:
+          ucum_code: s
+        close_mappings:
+          - pals:time_ref
+        aliases:
+          - tRef
+    broad_mappings:
+      - pals:ReferenceP
+
+  # ---- Mixins for specific element/component types ------------------------------------------------
+  HasSolenoidP:
+    mixin: true
+    attributes:
+      SolenoidP:
+        description: A mixin for solenoid-specific parameters that are aligned with PALS SolenoidP (Solenoid Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: SolenoidParamGroup
+        inlined: true
+  
+  SolenoidParamGroup:
+    is_a: ParamGroup
+    description: Mixin for solenoid-specific parameters.
+    attributes:
+      Ksol:
+        description: Normalized solenoid strength.
+        range: float
+        close_mappings:
+          - pals:Ksol
+      Bsol:
+        description: Solenoid field.
+        range: float
+        close_mappings:
+          - pals:Bsol
+        unit:
+          ucum_code: T
+    rules:
+      - description: "A solenoid must have one of, and exactly one of, Ksol or Bsol." # check this rule
+        preconditions:
+          slot_conditions:
+            id:
+              value_presence: PRESENT
+        postconditions:
+          exactly_one_of:
+            - slot_conditions:
+                Ksol:
+                  value_presence: PRESENT
+            - slot_conditions:
+                Bsol:
+                  value_presence: PRESENT
+    exact_mappings:
+      - pals:SolenoidP
+
+  HasTwissP:
+    mixin: true
+    attributes:
+      TwissP:
+        description: A mixin for Twiss parameters that are aligned with PALS TwissP (Twiss Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: TwissParamGroup
+        inlined: true
+
+  TwissParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for Twiss parameters, which can be used to describe the beam optics of an accelerator element.
+    broad_mappings:
+      - pals:TwissP
+    attributes:
+      alpha_a:
+        description: Twiss alpha parameter in the horizontal plane.
+        range: float
+        close_mappings:
+          - pals:alpha_a
+        aliases:
+          - alpha_x
+          - alphax
+      alpha_b:
+        description: Twiss alpha parameter in the vertical plane.
+        range: float
+        close_mappings:
+          - pals:alpha_b
+        aliases:
+          - alpha_y
+          - alphay
+      beta_a:
+        description: Twiss beta parameter in the horizontal plane. Must be strictly positive (> 0).
+        range: float
+        minimum_value: 0
+        none_of:  # minimum_value is inclusive; this excludes 0 itself
+          - equals_number: 0
+        close_mappings:
+          - pals:beta_a
+        unit:
+          ucum_code: m
+        aliases:
+          - beta_x
+          - betax
+      beta_b:
+        description: Twiss beta parameter in the vertical plane. Must be strictly positive (> 0).
+        range: float
+        minimum_value: 0
+        none_of:  # minimum_value is inclusive; this excludes 0 itself
+          - equals_number: 0
+        close_mappings:
+          - pals:beta_b
+        unit:
+          ucum_code: m
+        aliases:
+          - beta_y
+          - betay
+      eta_x:
+        description: Twiss dispersion parameter in the horizontal plane. May be any real value.
+        range: float
+        close_mappings:
+          - pals:eta_x
+        unit:
+          ucum_code: m
+        aliases:
+          - etax
+      eta_y:
+        description: Twiss dispersion parameter in the vertical plane. May be any real value.
+        range: float
+        close_mappings:
+          - pals:eta_y
+        unit:
+          ucum_code: m
+        aliases:
+          - etay
+      etap_x:
+        description: Twiss dispersion slope parameter in the horizontal plane.
+        range: float
+        close_mappings:
+          - pals:etap_x
+        unit:
+          ucum_code: "1"
+          descriptive_name: dimensionless
+        aliases:
+          - etapx
+      etap_y:
+        description: Twiss dispersion slope parameter in the vertical plane.
+        range: float
+        close_mappings:
+          - pals:etap_y
+        unit:
+          ucum_code: "1"
+          descriptive_name: dimensionless
+        aliases:
+          - etapy
+      phi_a:
+        description: Twiss phase advance parameter in the horizontal plane.
+        range: float
+        close_mappings:
+          - pals:phi_a
+        unit:
+          ucum_code: rad
+        aliases:
+          - phi_x
+          - phix
+          - psi_x
+          - psix
+      phi_b:
+        description: Twiss phase advance parameter in the vertical plane.
+        range: float
+        close_mappings:
+          - pals:phi_b
+        unit:
+          ucum_code: rad
+        aliases:
+          - phi_y
+          - phiy
+          - psi_y
+          - psiy
+
+  HasRFP:
+    mixin: true
+    attributes:
+      RFP:
+        description: A mixin for RF parameters that are aligned with PALS RFP (RF Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: RFParamGroup
+        inlined: true
+
+  RFParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for RF parameters, which can be used to describe the RF properties of an accelerator element.
+      This mixin is aligned with PALS RFP for interoperability with the Particle Accelerator Language Standard (PALS).
+    attributes:
+      frequency:
+        description: RF frequency.
+        range: float
+        close_mappings:
+          - pals:frequency
+        unit:
+          ucum_code: Hz
+      harmon:
+        description: RF harmonic number.
+        range: integer
+        close_mappings:
+          - pals:harmon
+      voltage:
+        description: RF voltage.
+        range: float
+        close_mappings:
+          - pals:voltage
+        unit:
+          ucum_code: V
+      # gradient - is this time dependent?
+      phase:
+        description: RF phase. rad/2pi RF phase in 0 to 2*pi
+        range: float
+        close_mappings:
+          - pals:phase
+      multipass_phase:
+        description: rad/2pi RF Phase added to multipass elements
+        range: float
+        close_mappings:
+          - pals:multipass_phase
+      cavity_type:
+        description: Cavity type
+        range: CavityTypeEnum
+        close_mappings:
+          - pals:cavity_type
+      num_cells:
+        description: Number of cells in the cavity
+        range: integer
+        close_mappings:
+          - pals:num_cells
+      zero_phase:
+        description: Sets what phase = 0 means.
+        range: ZeroPhaseEnum
+        close_mappings:
+          - pals:zero_phase
+      L_active:
+        description: Active acceleration length.
+        range: float
+        close_mappings:
+          - pals:L_active
+        unit:
+          ucum_code: m
+      dE_ref:
+        description: Reference energy gain.
+        range: float
+        close_mappings:
+          - pals:dE_ref
+        unit:
+          ucum_code: eV
+    broad_mappings:
+      - pals:RFP
+
+  HasElectricMultipoleP:
+    mixin: true
+    attributes:
+      ElectricMultipoleP:
+        description: A mixin for electric multipole parameters that are aligned with PALS ElectricMultipoleP (Electric Multipole Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: ElectricMultipoleParamGroup
+        inlined: true
+
+  ElectricMultipoleParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for electric multipole parameters, 
+      which can be used to describe the electric field components of an accelerator element.
+      This mixin is aligned with PALS ElectricMultipoleP for interoperability with the Particle Accelerator Language Standard (PALS).
+      Example with three multipole components (N=0,1,2):
+      ```yaml
+      elec_components:
+      - order: 7
+        tilt: 0.7
+      - order: 3
+        En: 27.3
+      - order: 2
+        EnL: 3.47e1
+      ```
+    exact_mappings:
+      - pals:ElectricMultipoleP
+    attributes:
+      elec_components:
+        description: Electric multipole components, one per order N.
+        range: MultipoleParameterGroup
+        multivalued: true
+        inlined_as_list: true
+    broad_mappings:
+      - pals_parametergroups:electricmultipolep-electric-multipole-parameters
+  
+  HasMagneticMultipoleP:
+    mixin: true
+    attributes:
+      MagneticMultipoleP:
+        description: A mixin for magnetic multipole parameters that are aligned with PALS MagneticMultipoleP (Magnetic Multipole Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: MagneticMultipoleParamGroup
+        inlined: true
+
+  MagneticMultipoleParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for magnetic multipole parameters, 
+      which can be used to describe the magnetic field components of an accelerator element.
+      This mixin is aligned with PALS MagneticMultipoleP for interoperability with the Particle Accelerator Language Standard (PALS).
+      Example with three multipole components (N=0,1,2):
+      ```yaml
+      mag_components:
+      - order: 7
+        tilt: 0.7
+      - order: 3
+        Bn: 27.3
+      - order: 2
+        BnL: 3.47e1
+      - order: 1
+        Kn: 0.85     # normalized form, e.g. a quadrupole's k1-like strength
+      ```
+    attributes:
+      mag_components:
+        description: Magnetic multipole components, one per order N.
+        range: MultipoleParameterGroup
+        multivalued: true
+        inlined_as_list: true
+    broad_mappings:
+      - pals:MagneticMultipoleP
+  
+  HasBendP:
+    mixin: true
+    attributes:
+      BendP:
+        description: A mixin for bend parameters that are aligned with PALS BendP (Bend Parameters) for interoperability with the Particle Accelerator Language Standard (PALS).
+        range: BendParamGroup
+        inlined: true
+
+  BendParamGroup:
+    is_a: ParamGroup
+    description: >-
+      Mixin for bend parameters, which can be used to describe the bending properties of an accelerator element.
+      This mixin is aligned with PALS BendP for interoperability with the Particle Accelerator Language Standard (PALS).
+    attributes:
+      angle_ref:
+        description: Reference bend angle.
+        range: float
+        close_mappings:
+          - pals:angle_ref
+        unit:
+          ucum_code: rad
+      bend_field_ref:
+        description: Reference bend field.
+        range: float
+        close_mappings:
+          - pals:bend_field_ref
+        unit:
+          ucum_code: T
+      bend_field_actual:
+        description: Actual bend field.
+        range: float
+        close_mappings:
+          - pals:bend_field_actual
+        unit:
+          ucum_code: T
+      e1:
+        description: Entrance end pole face rotation with respect to a sector geometry.
+        range: float
+        close_mappings:
+          - pals:e1
+        unit:
+          ucum_code: rad
+      e2:
+        description: Exit end pole face rotation with respect to a sector geometry.
+        range: float
+        close_mappings:
+          - pals:e2
+        unit:
+          ucum_code: rad
+      e1_rect:
+        description: Entrance end pole face rotation with respect to a rectangular geometry.
+        range: float
+        close_mappings:
+          - pals:e1_rect
+        unit:
+          ucum_code: rad
+      e2_rect:
+        description: Exit end pole face rotation with respect to a rectangular geometry.
+        range: float
+        close_mappings:
+          - pals:e2_rect
+        unit:
+          ucum_code: rad
+      edge1_int:
+        description: Entrance end fringe field integral.
+        range: float
+        close_mappings:
+          - pals:edge1_int
+        unit:
+          ucum_code: T.m
+      edge2_int:
+        description: Exit end fringe field integral.
+        range: float
+        close_mappings:
+          - pals:edge2_int
+        unit:
+          ucum_code: T.m
+      g_ref:
+        description: Reference bend strength = 1/radius_ref
+        range: float
+        close_mappings:
+          - pals:g_ref
+        unit:
+          ucum_code: 1/m
+      g_actual:
+        description: Actual bend strength = 1/radius_actual
+        range: float
+        close_mappings:
+          - pals:g_actual
+        unit:
+          ucum_code: 1/m
+      h1:
+        description: Entrance end pole face curvature
+        range: float
+        close_mappings:
+          - pals:h1
+        unit:
+          ucum_code: 1/m
+      h2:
+        description: Exit end pole face curvature
+        range: float
+        close_mappings:
+          - pals:h2
+        unit:
+          ucum_code: 1/m
+      L_chord:
+        description: Chord length of the bend.
+        range: float
+        close_mappings:
+          - pals:L_chord
+        unit:
+          ucum_code: m
+      L_sagitta:
+        description: Output parameter. Sagitta length.
+        range: float
+        close_mappings:
+          - pals:L_sagitta
+        unit:
+          ucum_code: m
+      L_rectangle:
+        description: Rectangular length. 
+        range: float
+        close_mappings:
+          - pals:L_rectangle
+        unit:
+          ucum_code: m
+      multipole_geometry:
+        description: Multipole geometry type. Must be `follows_ref_geometry`.
+        range: MultipoleGeometryEnum
+        close_mappings:
+          - pals:multipole_geometry
+      ref_geometry:
+        description: Reference geometry type. Must be `arc`.
+        range: ReferenceGeometryEnum
+        close_mappings:
+          - pals:ref_geometry
+      rho_ref:
+        description: Reference bend radius.
+        range: float
+        close_mappings:
+          - pals:rho_ref
+        unit:
+          ucum_code: m
+      tilt_ref:
+        description: Reference tilt of the bend.
+        range: float
+        close_mappings:
+          - pals:tilt_ref
+        unit:
+          ucum_code: rad
+    rules:
+      - description: "multipole_geometry must be follows_ref_geometry"
+        preconditions:
+          slot_conditions:
+            multipole_geometry:
+              value_presence: PRESENT
+        postconditions:
+          slot_conditions:
+            multipole_geometry:
+              equals_string: follows_ref_geometry
+      - description: "ref_geometry must be arc"
+        preconditions:
+          slot_conditions:
+            ref_geometry:
+              value_presence: PRESENT
+        postconditions:
+          slot_conditions:
+            ref_geometry:
+              equals_string: arc
+    exact_mappings:
+      - pals:BendP
+
+  MultipoleParameterGroup:
+    description: >-
+      A single order's electric (or magnetic) multipole component.
+      Only the fields supporting Electric Multipoles 
+      OR the fields for Magnetic Multipoles should be present, not both.
+      Not a mixin, but a class used in the ElectricMultipoleP and MagneticMultipoleP mixins to represent individual multipole components.
+    attributes:
+      order:
+        description: Multipole order N (0 = dipole, 1 = quadrupole, etc.)
+        range: integer
+        required: true
+      tilt:
+        description: Tilt of the Nth multipole.
+        range: float
+        unit:
+          ucum_code: rad
+        broad_mappings:
+          - pals:tilt
+      En:
+        description: Normal component of the field.
+        range: float
+        broad_mappings:
+          - pals:EnN
+      Es:
+        description: Skew component of the field.
+        range: float
+        broad_mappings:
+          - pals:EsN
+      EnL:
+        description: Length-integrated normal component.
+        range: float
+        broad_mappings:
+          - pals:EnNL
+      EsL:
+        description: Length-integrated skew component.
+        range: float
+        broad_mappings:
+          - pals:EsNL
+      Bn:
+        description: Normal component of the magnetic field.
+        range: float
+        broad_mappings:
+          - pals:BnN
+      Bs:
+        description: Skew component of the magnetic field.
+        range: float
+        broad_mappings:
+          - pals:BsN
+      Kn:
+        description: Normalized normal component.
+        range: float
+        broad_mappings:
+          - pals:KnN
+      Ks:
+        description: Normalized skew component.
+        range: float
+        broad_mappings:
+          - pals:KsN
+    rules:
+      - description: "If Es is present, then Bn, Bs, Kn, Ks should NOT be present"
+        preconditions:
+          slot_conditions:
+            Es:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            Bn:
+              value_presence: ABSENT
+            Bs:
+              value_presence: ABSENT
+            Kn:
+              value_presence: ABSENT
+            Ks:
+              value_presence: ABSENT
+      - description: "If En is present, then Bn, Bs, Kn, Ks should NOT be present"
+        preconditions:
+          slot_conditions:
+            En:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            Bn:
+              value_presence: ABSENT
+            Bs:
+              value_presence: ABSENT
+            Kn:
+              value_presence: ABSENT
+            Ks:
+              value_presence: ABSENT
+      - description: "If EnL is present, then Bn, Bs, Kn, Ks should NOT be present"
+        preconditions:
+          slot_conditions:
+            EnL:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            Bn:
+              value_presence: ABSENT
+            Bs:
+              value_presence: ABSENT
+            Kn:
+              value_presence: ABSENT
+            Ks:
+              value_presence: ABSENT
+      - description: "If EsL is present, then Bn, Bs, Kn, Ks should NOT be present"
+        preconditions:
+          slot_conditions:
+            EsL:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            Bn:
+              value_presence: ABSENT
+            Bs:
+              value_presence: ABSENT
+            Kn:
+              value_presence: ABSENT
+            Ks:
+              value_presence: ABSENT  
+      - description: "If Bn is present, then En, Es, EnL, EsL should NOT be present"
+        preconditions:
+          slot_conditions:
+            Bn:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            En:
+              value_presence: ABSENT
+            Es:
+              value_presence: ABSENT
+            EnL:
+              value_presence: ABSENT
+            EsL:
+              value_presence: ABSENT
+      - description: "If Bs is present, then En, Es, EnL, EsL should NOT be present"
+        preconditions:
+          slot_conditions:
+            Bs:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            En:
+              value_presence: ABSENT
+            Es:
+              value_presence: ABSENT
+            EnL:
+              value_presence: ABSENT
+            EsL:
+              value_presence: ABSENT
+      - description: "If Kn is present, then En, Es, EnL, EsL should NOT be present"
+        preconditions:
+          slot_conditions:
+            Kn:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            En:
+              value_presence: ABSENT
+            Es:
+              value_presence: ABSENT
+            EnL:
+              value_presence: ABSENT
+            EsL:
+              value_presence: ABSENT
+      - description: "If Ks is present, then En, Es, EnL, EsL should NOT be present"
+        preconditions:
+          slot_conditions:
+            Ks:
+              value_presence: PRESENT 
+        postconditions:
+          slot_conditions:
+            En:
+              value_presence: ABSENT
+            Es:
+              value_presence: ABSENT
+            EnL:
+              value_presence: ABSENT
+            EsL:
+              value_presence: ABSENT
+
+  # ---- High-level component classes ------------------------------------------------
+  Component:
+    is_a: Node
+    description: A general class for accelerator components, which can be specialized into more specific types like AcceleratorDevice, Magnet, etc.
+    abstract: true
+    mixins:
+      - HasMetaP
+    attributes:
+      native_types: # This can be the home for Elegant, MAD-X, or other source-system-specific types and aliases, which can be used to identify the component across different source systems.
+        description: The native type of the component in the source system, which can be used to identify the component across different source systems.
+        multivalued: true
+        range: string
+    broad_mappings:
+      - pals:Element
+  
+  PhysicalComponent:
+    is_a: Component
+    mixins:
+      - HasFloorP
+      - HasLongitudinalPlacementP
+    description: >-
+      A physical item that participates in or supports accelerator operation. 
+      This can be used to capture physical components, such as magnets, cavities, diagnostics, vacuum devices, and racks
+      that are important for understanding the structure and function of the accelerator system.
+    slots:
+      - functions
+      - beamline_relation
+    slot_usage:
+      functions:
+        description: >-
+          The function of the physical component, 
+          which can be used to identify the component across different source systems.
+        required: false
+        multivalued: true
+        close_mappings:
+          - pals:physical_function
+        range: PhysicalFunctionEnum
+      beamline_relation:
+        description: >-
+          The relationship of the physical component to the beamline, 
+          which can be used to identify the component across different source systems.
+        required: true
+        close_mappings:
+          - pals:physical_beamline_relation
+        range: PhysicalRelationEnum
+    broad_mappings:
+      - pals:Element
+
+  VirtualComponent:
+    is_a: Component
+    mixins:
+      - HasFloorP
+    description: >-
+      A virtual or logical component that represents a concept, function, or role in the accelerator 
+      beamline operation but does not have a physical instantiation. 
+      This can be used to capture abstract components, such as Markers, BeamLineSections, and FacilitySpaces
+      that are important for understanding the structure and function of the accelerator system but are not physical devices.
+    slots:
+      - functions
+      - beamline_relation
+    slot_usage:
+      functions:
+        description: >-
+          The function of the virtual component, 
+          which can be used to identify the component across different source systems.
+        required: true
+        multivalued: true
+        close_mappings:
+          - pals:virtual_function
+        range: VirtualFunctionEnum
+      beamline_relation:
+        description: >-
+          The relationship of the virtual component to the beamline, 
+          which can be used to identify the component across different source systems.
+        required: true
+        close_mappings:
+          - pals:virtual_beamline_relation
+        range: VirtualRelationEnum
+    broad_mappings:
+      - pals:Element
+      - pals:BookkeepingElement
+
+  # ---- High-level BeamLine and BeamLine element classes ------------------------------------------------
+  BeamLine:
+    is_a: VirtualComponent
+    description: "PALS element for an ordered sequence of beamline elements defining a beam path."
+    attributes:
+      multipass:
+        description: >-
+          Indicates whether the BeamLine is a multipass BeamLine, where the beam passes through the same physical elements multiple times.
+          If not provided, the default assumption is that the BeamLine is single-pass.
+        range: boolean
+        close_mappings:
+          - pals:multipass
+      #zero_point: # DM: commented because this relationship could be captured in the component_relations list in the Facility, rather than as a direct attribute of the BeamLine.
+      #  description: >-
+      #    Name of a line item used as a reference point when
+      #    the BeamLine is used as a sub-BeamLine.
+      #  range: BeamLine
+      periodic:
+        description: >-
+          Indicates whether orbit and Twiss parameters periodic.
+          If not provided, the default assumption is that the BeamLine is not periodic.
+        range: boolean
+        close_mappings:
+          - pals:periodic
+      repeat:
+        description: >-
+          Repetition count. If not provided, the default assumption is that the beamline is not repeated and the value is 1.
+
+          If value is greater than 1, the beamline is repeated that many times.
+        range: integer
+        close_mappings:
+          - pals:repeat
+      direction:
+        description: >-
+          Beam direction along the BeamLine: +1 or -1.
+          Longitudinal orientation. Default is +1.
+        range: integer
+        close_mappings:
+          - pals:direction
+      # placement
+      # inherit
+    slots:
+      - length
+      - description
+    slot_usage:
+      length:
+        description: >-
+          The total length of the BeamLine.
+          For pals interoperability, use m as the unit of length.
+    exact_mappings:
+      - pals:BeamLine
+
+  # ---- Signal class ------------------------------------------------
+  Signal:
+    is_a: Node
+    description: Semantic meaning of a control-system signal associated with a component.
+    mixins:
+      - HasMetaP
+    attributes:
+      signal_role:
+        description: The role of the signal in the control system, such as setpoint, readback, status, command, or limit.
+        required: true
+        range: SignalRoleEnum
+      source_system:
+        description: The source system from which the signal originates, such as EPICS, PALS-Ext, MYA, an element database, a channel database, or a simulation service.
+        required: true
+        range: SourceSystemEnum
+      native_description:
+        description: A human-readable description of the signal in the source system.
+        range: string
+      canonical_signal_type:
+        description: The canonical semantic meaning of the signal.
+        required: true
+        range: CanonicalSignalTypeEnum
+      quantity_kind:
+        description: The physical quantity kind of the signal.
+        required: true
+        range: QuantityKindEnum
+      native_data_type:
+        description: >-
+          The native data type of the signal in the source system, 
+          such as String, Integer, Float, or Boolean.
+        required: true
+        range: DataTypeEnum
+      native_unit:
+        description: >-
+          The native unit of the signal in the source system.
+        required: true
+        range: UnitEnum
+      access_protocol:
+        description: >-
+          The protocol used to access the signal in the source system, 
+          such as EPICS Channel Access, PALS-Ext, MYA, or a simulation service.
+        range: string
+      archive_identifier:
+        description: The identifier used to reference the signal in an archival system.
+        range: string
+    related_mappings:
+      - saref:Property
+
+  #---- Subclass component classes ------------------------------------------------
+  Magnet:
+    description: An accelerator device that produces a magnetic field for beam control.
+    abstract: true
+    is_a: PhysicalComponent
+    mixins:
+      - HasReferenceP
+      - HasBodyShiftP
+      - HasTwissP
+    broad_mappings:
+      - pals:Element
+  
+  Solenoid:
+    description: >-
+      A magnet with a primarily longitudinal magnetic field used for focusing.
+
+      A solenoid is an element whose magnetic field is dominated by a field whose direction is aligned with the magnetic axis. 
+    is_a: Magnet
+    mixins:
+      - HasSolenoidP
+    exact_mappings:
+      - pals:Solenoid
+
+  Multipole: # DM: added Multipole as a general class for magnets with higher-order multipole fields, which can be specialized into specific types like Quadrupole, Sextupole, Octupole, etc., and can capture the number of poles as an important parameter.
+    description: >-
+      A general magnet with a higher-order multipole field, such as a sextupole or octupole.
+
+      Only one of the electric or magnetic multipole components should be present, not both.
+    is_a: Magnet
+    mixins:
+      - HasElectricMultipoleP
+      - HasMagneticMultipoleP
+    broad_mappings:
+      - pals:Multipole
+  
+  Bend:
+    description: >-
+      Dipole magnet used to bend the beam. 2 poles.
+      The major difference between this element and other physical elements is that with a Bend 
+      the curvilinear coordinate system is an arc with finite curvature 
+      and for the other elements the curvilinear coordinate system is straight.
+    is_a: Multipole
+    aliases:
+      - Dipole
+    mixins:
+      - HasBendP
+    exact_mappings:
+      - pals:Bend
+  
+  Quadrupole:
+    description: >-
+      A magnet primarily used to focus or defocus the beam. 4 poles.
+
+      Only one of the electric or magnetic multipole components should be present, not both.
+    is_a: Multipole
+    exact_mappings:
+      - pals:Quadrupole
+
+  Octupole:
+    description: >-
+      A magnet primarily used to focus or defocus the beam. 8 poles.
+
+      Only one of the electric or magnetic multipole components should be present, not both.
+    is_a: Multipole
+    exact_mappings:
+      - pals:Octupole
+
+  Sextupole:
+    description: >-
+      A magnet primarily used to focus or defocus the beam. 6 poles.
+
+      Only one of the electric or magnetic multipole components should be present, not both.
+    is_a: Multipole
+    exact_mappings:
+      - pals:Sextupole
+
+  Kicker:
+    description: >-
+      A magnet primarily used to steer the beam.
+
+      Can deflect the beam transversely in both planes, or a single plane, depending on the design and parameters of the kicker. 
+
+      Only one of the electric or magnetic multipole components should be present, not both.
+    is_a: Magnet
+    mixins:
+      - HasElectricMultipoleP
+      - HasMagneticMultipoleP
+    attributes:
+      plane:
+        description: The transverse plane in which the kicker operates, either horizontal or vertical.
+        range: PlaneEnum
+    broad_mappings:
+      - pals:Kicker
+    aliases:
+      - Corrector
+      - HCorrector
+      - VCorrector
+      - VDiagKicker
+      - HDiagKicker
+
+  ACKicker:
+    description: >-
+      An ACKicker element simulates a time-dependent kicker. 
+      It is like a Kicker element except that the field varies in time. 
+      This element requires a user supplied time-dependent expression.
+    is_a: Kicker
+    exact_mappings:
+      - pals:ACKicker
+
+  DiagnosticDevice:
+    description: An accelerator device used to measure beam or machine state.
+    is_a: PhysicalComponent
+    broad_mappings:
+      - pals:Instrument
+
+  BeamProfileMonitor:
+    description: A diagnostic device used to measure transverse beam profile.
+    aliases:
+      - viewer
+      - profile monitor
+    is_a: DiagnosticDevice
+    mixins:
+      - HasReferenceP
+      - HasBodyShiftP
+      - HasTwissP
+    broad_mappings:
+      - pals:Instrument
+
+  BeamPositionMonitor:
+    description: A diagnostic device used to measure transverse beam position.
+    is_a: DiagnosticDevice
+    mixins:
+      - HasReferenceP
+      - HasBodyShiftP
+      - HasTwissP
+    broad_mappings:
+      - pals:Instrument
+
+  Aperture:
+    description: A diagnostic or limiting aperture element used to constrain or characterize beam passage.
+    is_a: DiagnosticDevice
+    mixins:
+      - HasReferenceP
+      - HasTwissP
+    broad_mappings:
+      - pals:Instrument
+
+  RadiationMonitor:
+    description: A diagnostic device used to monitor radiation dose or dose rate.
+    is_a: DiagnosticDevice
+    mixins:
+      - HasBodyShiftP
+    broad_mappings:
+      - pals:Instrument
+  
+  Cavity:
+    description: A cavity used for beam acceleration or manipulation.
+    is_a: PhysicalComponent
+    abstract: true
+    mixins:
+      - HasReferenceP
+      - HasElectricMultipoleP
+      - HasMagneticMultipoleP
+      - HasBodyShiftP
+      - HasTwissP
+  
+  CrabCavity:
+    description: A cavity used for transverse beam manipulation, such as crabbing or deflecting.
+    is_a: Cavity
+    exact_mappings:
+      - pals:CrabCavity
+
+  RFCavity:
+    description: A cavity used for RF acceleration or longitudinal manipulation.
+    abstract: true
+    is_a: Cavity
+    mixins:
+      - HasRFP
+    exact_mappings:
+      - pals:RFCavity
+  
+  NormalConductingRFCavity:
+    description: A cavity used for RF acceleration or longitudinal manipulation, which is normal conducting.
+    is_a: RFCavity
+    broad_mappings:
+      - pals:RFCavity
+  
+  SuperConductingRFCavity:
+    description: A cavity used for RF acceleration or longitudinal manipulation, which is superconducting.
+    is_a: RFCavity
+    broad_mappings:
+      - pals:RFCavity
+  
+  SupportingFacilityComponent:
+    is_a: PhysicalComponent
+    description: >-
+      A physical component that supports accelerator operation 
+      without a specific beam-pipe placement, 
+      such as a power supply, control rack, or radiation detector.
+      These can include Girders, Racks, Power Supplies, 
+      and other physical infrastructure components that are important for understanding 
+      the structure and function of the accelerator system but are not inline with the beamline.
+    mixins:
+      - HasFloorP
+      - HasLongitudinalPlacementP
+      - HasBodyShiftP
+    attributes:
+      facility_functions:
+        description: >-
+          The function of the supporting facility component, 
+          which can be used to identify the component across different source systems.
+        required: true
+        multivalued: true
+        close_mappings:
+          - pals:supporting_facility_function
+        range: FacilityFunctionEnum
+    broad_mappings:
+      - pals:StructuralElement
+  
+  BookkeepingComponent:
+    is_a: VirtualComponent
+    description: >-
+      A virtual component that represents a bookkeeping or organizational role in the accelerator system, 
+      such as a BeamLineSection, Marker or a Fork.
+      These can include BeamLineSections, Markers, Forks,
+      and other virtual components that are important for understanding 
+      the structure and function of the accelerator system but are not physical devices.
+    mixins:
+      - HasBodyShiftP
+    broad_mappings:
+      - pals:BookkeepingElement
+
+  Marker:
+    description: A virtual component used as a reference point or marker in the beamline structure.
+    is_a: BookkeepingComponent
+    mixins:
+      - HasTwissP
+    exact_mappings:
+      - pals:Marker
+
+  BeginningEle:
+    description: >-
+      Initial element at the start of a beamline branch. It holds the initial
+      reference and Twiss parameters for the branch. A BeginningEle may be
+      omitted when the branch is reached through a Fork that propagates its
+      reference parameters; otherwise it is expected to be the first element
+      in the branch.
+    is_a: BookkeepingComponent
+    mixins:
+      - HasReferenceP
+      - HasTwissP
+    exact_mappings:
+      - pals:BeginningEle
+
+  Drift:
+    description: >-
+      A field-free space between beamline components. A Drift is a virtual
+      beamline component whose longitudinal extent preserves the separation
+      between adjacent physical or virtual components.
+    is_a: VirtualComponent
+    mixins:
+      - HasLongitudinalPlacementP
+    exact_mappings:
+      - pals:Drift
+
+  BeamLineSection:
+    description: >-
+      A virtual component used to represent a section of the BeamLine for organizational
+      or functional grouping of components.
+    is_a: BookkeepingComponent
+    mixins:
+      - HasFloorP
+    exact_mappings:
+      - pals:BeamLineSection
+
+  # ---- Supporting class for additional metadata ------------------------------------------------
+  AdditionalMetadata:
+    description: >-
+      A single generic key/value metadata entry, used as a GraphQL-compatible
+      replacement for an open-ended (range: Any) field. A list of these
+      represents an arbitrary, extensible bag of program-specific metadata.
+    attributes:
+      key:
+        required: true
+        range: string
+        description: The metadata field name.
+      value:
+        required: true
+        range: string
+        description: The metadata value, serialized as a string.
+      datatype:
+        range: DataTypeEnum
+        description: >-
+          Hint for the value's original type, so consumers can parse it back
+          (e.g. float, integer, boolean) rather than treating everything as
+          an opaque string.
+
+  # ---- Relationships: SignalBindings and Component Relations ------------------------------------------------
+  Edge:
+    abstract: true
+    description: Abstract base for subject-predicate-object associations.
+    slots:
+      - id
+      - subject
+      - predicate
+      - object
+  
+  SignalBinding:
+    abstract: true
+    is_a: Edge
+    description: >-
+      Association between a PhysicalComponent and one of its Signals,
+      e.g. QUAD1 component to QUAD1.STATUS signal.
+    slot_usage:
+      subject:
+        range: PhysicalComponent
+      object:
+        range: Signal
+  
+  HasSignal:
+    is_a: SignalBinding
+    close_mappings:
+      - pals:HasSignalRelation
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+    annotations:
+      rdf_predicate: pals_config:has_signal
+
+  HasSetpointSignal:
+    is_a: SignalBinding
+    close_mappings:
+      - pals:HasSetpointSignalRelation
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+    annotations:
+      rdf_predicate: pals_config:has_setpoint_signal
+
+  HasReadbackSignal:
+    is_a: SignalBinding
+    close_mappings:
+      - pals:HasReadbackSignalRelation
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+    annotations:
+      rdf_predicate: pals_config:has_readback_signal
+  
+  HasCommandSignal:
+    is_a: SignalBinding
+    close_mappings:
+      - pals:HasCommandSignalRelation
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+    annotations:
+      rdf_predicate: pals_config:has_command_signal
+
+  HasLimitSignal:
+    is_a: SignalBinding
+    close_mappings:
+      - pals:HasLimitSignalRelation
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+    annotations:
+      rdf_predicate: pals_config:has_limit_signal
+
+  ComponentRelation:
+    abstract: true
+    is_a: Edge
+    description: >-
+      Association between two Components (Physical or Virtual), with supporting
+      contextual/qualifying information about how and where the relationship holds.
+    slots:
+      - context
+    slot_usage:
+      subject:
+        range: Component
+      object:
+        range: Component
+    attributes:
+      component_direction:
+        range: DirectionEnum
+      reference_frame:
+        range: ReferenceFrameEnum
+        recommended: true
+
+  Precedes:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component precedes the object component in a specified context, 
+      such as along a beamline.
+    slots:
+      - beamline_context
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: Precedes
+      context:
+        description: >-
+          The frame of reference / domain in which this relationship is asserted to hold.
+          For Precedes, this is always beamline_order; the specific BeamLine is given in beamline_context.
+        required: true
+    rules:
+      - description: "This is a Precedes relation, context must be beamline_order"
+        preconditions:
+          slot_conditions:
+            predicate:
+              equals_string: Precedes
+        postconditions:
+          slot_conditions:
+            context:
+              equals_string: beamline_order
+    annotations:
+      rdf_predicate: pals_config:precedes
+  
+
+  Contains:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component contains the object component in a specified context, 
+      such as within a BeamLineSection or other organizational grouping.
+    related_mappings:
+      - BFO:0000051
+    slots:
+      - beamline_context
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: Contains
+      beamline_context:
+        required: false
+    annotations:
+      rdf_predicate: pals_config:contains
+      
+  Controls:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component controls the object component in a specified context, 
+      such as a power supply controlling a magnet.
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: Controls
+    annotations:
+      rdf_predicate: pals_config:controls
+  
+
+  IsPartOf:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component is part of the object component in a specified context, 
+      such as a magnet being part of a BeamLineSection.
+    exact_mappings:
+      - BFO:0000050
+    slots:
+      - context
+      - beamline_context
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: IsPartOf
+      context:
+        required: false
+      beamline_context:
+        required: false
+    annotations:
+      rdf_predicate: pals_config:is_part_of
+    
+  AdjacentTo:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component is adjacent to the object component and not overlapping
+       in a specified context, such as radiation detector and a magnet.
+    related_mappings:
+      - RO:0002220
+    slots:
+      - distance_value
+      - distance_unit
+      - tolerance_value
+      - tolerance_unit
+      - coordinates
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: AdjacentTo
+    annotations:
+      rdf_predicate: pals_config:adjacent_to
+
+  Overlaps:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component overlaps the object component in a specified context, 
+      such as a magnet and a diagnostic device.
+    related_mappings:
+      - RO:0002131
+    slots:
+      - coordinates
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: Overlaps
+    annotations:
+      rdf_predicate: pals_config:overlaps
+  
+  HasConnectingBranch:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component has a connecting branch to the object component in a specified context, 
+      such as a beamline section having a fork as a connecting branch.
+    related_mappings:
+      - RO:0002253
+    slots:
+      - beamline_context
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: HasConnectingBranch
+      context:
+        description: >-
+          The frame of reference / domain in which this relationship is asserted to hold.
+          For HasConnectingBranch, this is always beamline_order; the specific BeamLine is given in beamline_context.
+        required: true
+    rules:
+      - description: "This is a HasConnectingBranch relation, context must be beamline_order"
+        preconditions:
+          slot_conditions:
+            predicate:
+              equals_string: HasConnectingBranch
+        postconditions:
+          slot_conditions:
+            context:
+              equals_string: beamline_order
+    annotations:
+      rdf_predicate: pals_config:has_connecting_branch
+
+  MountedOn:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component is mounted on the object component in a specified context, 
+      such as a diagnostic device mounted on a magnet.
+    related_mappings:
+      - RO:0002371
+    slots:
+      - coordinates
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: MountedOn
+    annotations:
+      rdf_predicate: pals_config:mounted_on
+     
+  Intersects:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component intersects the object component in a specified context, 
+      such as a beamline and a diagnostic device.
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: Intersects
+    annotations:
+      rdf_predicate: pals_config:intersects
+
+  NearestTo:
+    is_a: ComponentRelation
+    description: >-
+      A relationship indicating that the subject component is nearest to the object component in a specified context, 
+      such as a diagnostic device nearest to a magnet.
+    slots:
+      - distance_value
+      - distance_unit
+      - tolerance_value
+      - tolerance_unit
+      - coordinates
+    slot_usage:
+      predicate:
+        description: >-
+          The predicate of the relationship, which can be used to identify the relationship across different source systems.
+        required: true
+        equals_string: NearestTo
+    annotations:
+      rdf_predicate: pals_config:nearest_to
+
+  CoordinateSet:
+    description: >-
+      A set of coordinates that define the spatial relationship between two components.
+      This can include Cartesian coordinates, cylindrical coordinates, or other coordinate systems as needed.
+      Useful for defining the spatial relationship where the relationship is not strictly linear or where the components are not aligned along a single axis.
+    attributes:
+      coordinate_system:
+        range: CoordinateSystemEnum
+        description: The coordinate system used for the coordinates (e.g., Cartesian, Cylindrical).
+      x_coord:
+        range: float
+        description: The x-coordinate in the specified coordinate system.
+      y_coord:
+        range: float
+        description: The y-coordinate in the specified coordinate system.
+      z_coord:
+        range: float
+        description: The z-coordinate in the specified coordinate system.
+      r_coord:
+        range: float
+        description: The radial distance in cylindrical coordinates.
+      theta_coord:
+        range: float
+        description: The angular coordinate in cylindrical coordinates (in radians).
+      phi_coord:
+        range: float
+        description: The azimuthal angle in spherical coordinates (in radians).
+
+# ---- Enums ---------------------------------------------------------------
+enums:
+  IdentifierTypeEnum:
+    description: Controlled values for identifier types.
+    permissible_values:
+      DOI:
+        description: Digital Object Identifier.
+        exact_mappings:
+          - http://purl.org/spar/datacite/doi
+      PURL:
+        description: Persistent Uniform Resource Locator.
+        exact_mappings:
+          - http://purl.org/spar/datacite/purl
+      ROR:
+        description: Research Organization Registry identifier.
+        exact_mappings:
+          - http://purl.org/spar/datacite/ror
+      LOCAL:
+        description: Local identifier, specific to the facility or source system.
+        exact_mappings:
+          - http://purl.org/spar/datacite/local-resource-identifier-scheme
+      URL:
+        description: Uniform Resource Locator.
+        exact_mappings:
+          - http://purl.org/spar/datacite/url
+      ARK:
+        description: Archival Resource Key.
+        exact_mappings:
+          - http://purl.org/spar/datacite/ark
+
+  SourceSystemEnum:
+    description: Controlled values for facility-local source systems.
+    permissible_values:
+      EPICS:
+        description: EPICS control system.
+      EPICS_ChannelAccess:
+        description: EPICS Channel Access source.
+      PALS_Ext:
+        description: PALS-Ext or middle-layer channel/export system.
+      MYA:
+        description: MYA archive or historical channel service.
+      ElementDatabase:
+        description: Facility element database.
+      ChannelDatabase:
+        description: Facility channel database.
+      Simulation:
+        description: Simulation or model-derived signal source.
+      Other:
+        description: Other source system.
+
+  PhysicalRelationEnum:
+    description: Controlled values for physical relation to the beamline.
+    permissible_values:
+      Inline:
+        description: Beam passes through the physical component or beamline aperture. The physical component is physically on the beamline.
+      AttachedToPipe:
+        description: Mechanically attached to the beam pipe or vacuum envelope.
+      NearBeamLine:
+        description: Near and operationally associated with the beamline.
+      SupportingFacility:
+        description: Supports accelerator operation without a specific beam-pipe placement.
+
+  VirtualRelationEnum: # Chris and Todd need to evaluate this idea and ontology
+    description: Controlled values for virtual relation to the beamline.
+    permissible_values:
+      Inline:
+        description: >-
+          Beam passes through the virtual component.
+          Used for virtual components like Markers that represent important locations on the beamline but don't have a physical instantiation.
+      AssociatedWithBeamLine:
+        description: >-
+          Not inline with the beamline but still operationally associated with it. 
+          Used for virtual components that are important for understanding the BeamLine structure and function but don't have a direct physical relationship to the beam path, 
+          such as BeamLineSections or Markers that are not inline with the beam.
+      NotAssociatedWithBeamLine:
+        description: >-
+          Not inline with the BeamLine and not operationally associated with it. 
+          Used for virtual components that are more abstract and don't have a specific relationship 
+          to the BeamLine, such as a virtual component representing a control system function 
+          or role that is important for understanding the overall accelerator system but doesn't have a direct relationship to the BeamLine structure.
+
+
+  PhysicalFunctionEnum: # converge with CT on this list
+    description: Broad device-level functions.
+    permissible_values:
+      Focusing:
+        description: Focuses or defocuses the beam.
+      Steering:
+        description: Steers the beam in a transverse plane.
+      BeamPositionMeasurement:
+        description: Measures transverse beam position.
+      VacuumGeneration:
+        description: Generates or maintains vacuum.
+      RadiationMonitoring:
+        description: Monitors radiation dose or dose rate.
+      Measurement:
+        description: Measures beam or machine state.
+      BeamAcceleration:
+        description: Accelerates the beam.
+      BeamLossDetection:
+        description: Detects beam loss.
+      BeamCurrentMeasurement:
+        description: Measures beam current or intensity.
+      BeamProfileMeasurement:
+        description: Measures beam profile.
+      MachineProtection:
+        description: Supports machine protection.
+      TimingSynchronization:
+        description: Supports timing or synchronization.
+
+  FacilityFunctionEnum:
+    description: Broad structural or support functions.
+    permissible_values:
+      Support:
+        description: Provides mechanical support for accelerator operations.
+      Alignment:
+        description: Supports alignment of accelerator components.
+      PowerSupply:
+        description: Provides electrical power to accelerator components.
+      ControlRack:
+        description: Houses control electronics for accelerator components.
+      Cooling:
+        description: Provides cooling for accelerator components.
+      Diagnostics:
+        description: >-
+          Provides diagnostic capabilities for accelerator components, such as monitoring or measurement.
+      Detection:
+        description: >-
+          Provides detection capabilities for accelerator components, such as radiation or particle detection.
+
+  VirtualFunctionEnum: # Chris and Todd need to evaluate this idea and ontology
+    description: Broad virtual component functions or roles.
+    permissible_values:
+      BeamLineSection:
+        description: >-
+          A section of the BeamLine used for organizational or functional grouping of components, such as a linac section, transfer line, or ring sector.
+        exact_mappings:
+          - pals:BeamLine
+      Mark:
+        description: >-
+          A virtual component representing an important location on the beamline, 
+          such as a reference point for beam-based alignment, a location of a known aperture restriction, 
+          or a location of a critical diagnostic device.
+        exact_mappings:
+          - pals:Marker
+      DriftSpace:
+        description: >-
+          A field-free longitudinal interval separating beamline components.
+        exact_mappings:
+          - pals:Drift
+      Fork:
+        description: >-
+          A virtual component representing a branching point in the beamline, 
+          such as a beamline fork or switchyard.
+        exact_mappings:
+          - pals:Fork
+      Control:
+        description: >-
+          A virtual component representing a control system function or role
+          that is important for understanding the overall accelerator system 
+          but doesn't have a direct relationship to the beamline structure, 
+          such as the EPICS control system that manages device process variables across the accelerator.
+
+  PlaneEnum:
+    description: Controlled values for transverse plane.
+    permissible_values:
+      Horizontal:
+        description: Horizontal transverse plane.
+      Vertical:
+        description: Vertical transverse plane.
+
+  SignalRoleEnum:
+    description: Roles for control-system signals.
+    permissible_values:
+      Setpoint:
+        description: Requested or configured value.
+        broad_mappings:
+          - sosa:ActuatableProperty
+      Readback:
+        description: Measured or reported value.
+        broad_mappings:
+          - sosa:ObservableProperty
+      Status:
+        description: State or condition indicator.
+      Command:
+        description: Command or action trigger.
+        broad_mappings:
+          - sosa:ActuatableProperty
+      MinimumLimit:
+        description: Minimum allowed signal value.
+      MaximumLimit:
+        description: Maximum allowed signal value.
+      RangeLimit:
+        description: A signal containing both upper and lower allowed limits.
+
+  CanonicalSignalTypeEnum:
+    description: Portable semantic meanings for important signals.
+    permissible_values:
+      HorizontalBeamPosition:
+        description: Horizontal beam position signal.
+      VerticalBeamPosition:
+        description: Vertical beam position signal.
+      HorizontalBeamPositionOffset:
+        description: Horizontal beam position offset signal.
+      VerticalBeamPositionOffset:
+        description: Vertical beam position offset signal.
+      BeamIntensity:
+        description: Beam intensity or current signal.
+      DeviceStatus:
+        description: Device status signal.
+      GradientSetpoint:
+        description: Cavity accelerating gradient setpoint signal.
+      GradientReadback:
+        description: Cavity accelerating gradient readback signal.
+      MagnetCurrentSetpoint:
+        description: Magnet current setpoint signal.
+      MagnetCurrentReadback:
+        description: Magnet current readback signal.
+      MagnetFieldSetpoint:
+        description: Magnet field setpoint signal.
+      MagnetCurrentRange:
+        description: Magnet current range signal.
+      IntegratedFieldSetpoint:
+        description: Integrated magnetic field setpoint signal.
+      IntegratedFieldReadback:
+        description: Integrated magnetic field readback signal.
+      VacuumPressure:
+        description: Vacuum pressure signal.
+      IonPumpCurrent:
+        description: Ion pump current signal.
+      IonPumpVoltage:
+        description: Ion pump voltage signal.
+      GammaDoseRate:
+        description: Gamma radiation dose-rate signal.
+      NeutronDoseRate:
+        description: Neutron radiation dose-rate signal.
+      Status: # DM: Added a generic DeviceStatus canonical signal type for status signals that don't fit into more specific categories, such as corrector status, BPM device status, etc.
+        description: Generic status signal for a device.
+
+  QuantityKindEnum:
+    description: Physical quantity kinds for signals.
+    permissible_values:
+      BeamPosition:
+        description: Beam transverse position.
+      State:
+        description: Device state or condition.
+        exact_mappings:
+          - sosa:ObservableProperty
+      ElectricCurrent:
+        description: Electric current.
+        exact_mappings:
+          - quantitykind:ElectricCurrent
+      IntegratedMagneticField:
+        description: Integrated magnetic field.
+        exact_mappings:
+          - quantitykind:MagneticFluxPerLength
+      IntegratedMagneticFieldGradient:
+        description: Integrated magnetic field gradient.
+      MagneticField:
+        description: Magnetic field.
+        exact_mappings:
+          - quantitykind:MagneticFluxDensity
+      Pressure:
+        description: Gas or vacuum pressure.
+        exact_mappings:
+          - quantitykind:Pressure
+      DoseRate:
+        description: Radiation dose rate.
+        exact_mappings:
+          - quantitykind:AbsorbedDoseRate
+      Voltage:
+        description: Electric potential difference.
+        exact_mappings:
+          - quantitykind:Voltage
+      Power:
+        description: Power.
+        exact_mappings:
+          - quantitykind:Power
+      CavityPhase:
+        description: Cavity phase.
+      CavityGradient:
+        description: Cavity accelerating gradient.
+        exact_mappings:
+          - quantitykind:ElectricFieldStrength
+
+  UnitEnum:
+    description: >-
+      Engineering units using ASCII-safe enum names. Values map to QUDT unit
+      IRIs with the LinkML meaning field when an exact QUDT unit is available.
+    permissible_values:
+      A:
+        description: ampere
+        exact_mappings:
+          - unit:A
+      degree:
+        description: degree
+        exact_mappings:
+          - unit:DEG
+      eV:
+        description: electron volt
+        exact_mappings:
+          - unit:EV
+      eV_per_c:
+        description: momentum in electron volts per speed of light
+      eV_per_c2:
+        description: mass in electron volts per speed of light squared
+      fundamental_charge:
+        description: fundamental charge
+      Gauss:
+        description: gauss (magnetic flux density)
+        exact_mappings:
+          - unit:GAUSS
+      G_cm:
+        description: gauss centimeter, a magnetic field integral. 1 G.cm = 1e-6 T.m
+        unit:
+          ucum_code: G.cm
+      Hz:
+        description: hertz
+        exact_mappings:
+          - unit:HZ
+      kW:
+        description: kilowatt
+        exact_mappings:
+          - unit:KiloW
+      m:
+        description: meter
+        exact_mappings:
+          - unit:M
+      mm:
+        description: millimeter
+        exact_mappings:
+          - unit:MilliM
+      mrem_per_h:
+        description: >-
+          millirem per hour. Kept as a local accelerator unit value because
+          QUDT publishes related radiation units but no exact millirem-per-hour
+          unit in the checked vocabulary.
+      MV_per_m:
+        description: megavolt per meter
+        exact_mappings:
+          - unit:MegaV-PER-M
+      PA:
+        description: pascal
+        exact_mappings:
+          - unit:PA
+      randians_pi2:
+        description: radians divided by 2 pi - angles and phases
+      rem_per_h:
+        description: >-
+          rem per hour. Kept as a local accelerator unit value because QUDT
+          publishes rem and rem-per-second but no exact rem-per-hour unit in
+          the checked vocabulary.
+      seconds:
+        description: second
+        exact_mappings:
+          - unit:SEC
+      T:
+        description: tesla
+        exact_mappings:
+          - unit:T
+      T_M:
+        description: tesla meter
+        exact_mappings:
+          - unit:T-M
+      Torr:
+        description: torr
+        exact_mappings:
+          - unit:TORR
+      V:
+        description: volt
+        exact_mappings:
+          - unit:V
+      V_per_m:
+        description: volt per meter
+        exact_mappings:
+          - unit:V-PER-M
+      unitless:
+        description: dimensionless numeric value
+        exact_mappings:
+          - unit:UNITLESS
+      none:
+        description: no unit or not applicable
+
+  DataTypeEnum:
+    description: Data types for parameter values.
+    permissible_values:
+      String:
+        description: string data type
+        exact_mappings:
+          - xsd:string
+      Integer:
+        description: integer data type
+        exact_mappings:
+          - xsd:integer
+      Float:
+        description: floating-point data type
+        exact_mappings:
+          - xsd:float
+      Boolean:
+        description: boolean data type
+        exact_mappings:
+          - xsd:boolean
+      FloatArray:
+        description: An array of floating-point values.
+
+
+  CoordinateSystemEnum:
+    description: Coordinate systems for spatial relationships.
+    permissible_values:
+      Cartesian:
+        description: Cartesian coordinate system (x, y, z).
+      Cylindrical:
+        description: Cylindrical coordinate system (r, theta, z).
+      Spherical:
+        description: Spherical coordinate system (r, theta, phi).
+  
+  RelationContextEnum:
+    permissible_values:
+      beamline_order:
+        aliases:
+          - beamline order
+          - beamline sequence
+          - order
+          - sequence
+        description: The order of components along the beamline.
+      Euclidean_3D:
+        aliases:
+          - 3D Euclidean space
+        description: 3D Euclidean space.
+      Euclidean_2D:
+        aliases:
+          - 2D Euclidean space
+        description: 2D Euclidean space.
+      floorplan:
+        aliases:
+          - floor plan
+        description: Floorplan coordinate system.
+      containment:
+        aliases:
+          - containment
+          - contains
+        description: Containment relationship context.
+      installation_mounting:
+        aliases:
+          - installation
+          - mounting
+          - mounted
+        description: Installation or mounting context.
+
+  ReferenceFrameEnum:
+    permissible_values:
+      beam_direction:
+      facility_coordinates:
+      local_component_frame:
+      tunnel_stationing:
+
+  DirectionEnum:
+    permissible_values:
+      upstream:
+      downstream:
+      positive:
+      negative:
+
+  MultipoleGeometryEnum:
+    description: >-
+      The geometric configuration of the multipole field. 
+      Sets the geometry used to calculate multipoles.
+    permissible_values:
+      follows_ref_geometry:
+        description: Use geometry equivalent to the setting of `ref_geometry`.
+      vertically_pure:
+        description: Vertically pure multipoles with arc geometry.
+      horizontally_pure:
+        description: Horizontally pure multipoles with arc geometry.
+      chord:
+        description: Z-axis is the chord connecting the entrance origin point to the exit origin point.
+      entrance_coords:
+        description: Rectangular coordinates commensurate with the entrance coordinates.
+      exit_coords:
+        description: Rectangular coordinates commensurate with the exit coordinates.
+
+  ReferenceGeometryEnum:
+    description: >-
+      The reference geometry used to calculate multipoles. 
+      Sets the geometry used to calculate multipoles.
+    permissible_values:
+      arc:
+        description: Default. Reference are the curvelinear arc coordinates.
+      chord:
+        description: Z-axis is the chord connecting the entrance origin point to the exit origin point.
+      entrance_coords:
+        description: Rectangular coordinates commensurate with the entrance coordinates.
+      exit_coords:
+        description: Rectangular coordinates commensurate with the exit coordinates.
+
+  CavityTypeEnum:
+    description: >-
+      The type of cavity, which determines the field configuration and mode structure.
+    permissible_values:
+      STANDING_WAVE:
+        description: Default. A cavity that supports standing wave modes, typically with fixed geometry and resonant frequencies.
+      TRAVELING_WAVE:
+        description: A cavity that supports traveling wave modes, typically with a waveguide structure and phase velocity matching the beam.
+
+  ZeroPhaseEnum:
+    description: >-
+      The zero phase reference for the cavity, which determines the phase of the RF field at the entrance of the cavity.
+    permissible_values:
+      ACCELERATING:
+        description: Default. The zero phase is the maximum accelerating phase, where the beam gains energy.
+      BELOW_TRANSITION:
+        description: Zero phase is at the stable zero crossing for particles below transition.
+      ABOVE_TRANSITION:
+        description: Zero phase is at the stable zero crossing for particles above transition..
