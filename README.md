@@ -385,3 +385,9 @@ validation, EPICS mapping, and `.db` rendering remain separate testable stages.
 - [EPICS analog output record](https://docs.epics-controls.org/projects/base/en/latest/aoRecord.html)
 - [EPICS string input record](https://docs.epics-controls.org/projects/base/en/latest/stringinRecord.html)
 - [EPICS database definition syntax](https://docs.epics-controls.org/en/latest/appdevguide/databaseDefinition.html)
+
+## Direct Bmad/LUME ring
+
+The [direct ring example](narad_lume_direct/README.md) builds a PALS lattice
+into a LUME-PVA model using the upstream NARAD schema. Its Pixi workspace
+serves the full toy ring and includes a loopback verification task.

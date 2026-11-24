@@ -1,0 +1,91 @@
+# Two identical bending FODO cells with distinct device occurrences.
+PALS:
+  facility:
+    - start:
+        kind: BeginningEle
+        ReferenceP: {pc_ref: 1.0e9, species_ref: electron}
+    - gap: {kind: Drift, length: 0.6}
+    - sector_bend: {kind: Bend, length: 3.141592653589793, BendP: {g_ref: 0.5}}
+
+    # Cell 1
+    - qf1: {kind: Quadrupole, length: 0.25, MagneticMultipoleP: {Kn1: 0.9}}
+    - cor_f1: {kind: Kicker, length: 0.15}
+    - bpm_f1: {kind: Instrument, length: 0}
+    - qd1: {kind: Quadrupole, length: 0.25, MagneticMultipoleP: {Kn1: -0.9}}
+    - cor_d1: {kind: Kicker, length: 0.15}
+    - bpm_d1: {kind: Instrument, length: 0}
+
+    # Cell 2
+    - qf2: {kind: Quadrupole, length: 0.25, MagneticMultipoleP: {Kn1: 0.9}}
+    - cor_f2: {kind: Kicker, length: 0.15}
+    - bpm_f2: {kind: Instrument, length: 0}
+    - qd2: {kind: Quadrupole, length: 0.25, MagneticMultipoleP: {Kn1: -0.9}}
+    - cor_d2: {kind: Kicker, length: 0.15}
+    - bpm_d2: {kind: Instrument, length: 0}
+
+    - ring:
+        kind: BeamLine
+        line:
+          - start
+          # Cell 1
+          - qf1
+          - cor_f1
+          - bpm_f1
+          - gap
+          - sector_bend
+          - gap
+          - qd1
+          - cor_d1
+          - bpm_d1
+          - gap
+          - sector_bend
+          - gap
+          # Cell 2
+          - qf2
+          - cor_f2
+          - bpm_f2
+          - gap
+          - sector_bend
+          - gap
+          - qd2
+          - cor_d2
+          - bpm_d2
+          - gap
+          - sector_bend
+          - gap
+    - machine:
+        kind: Lattice
+        branches:
+          - ring: {periodic: true}
+    - use: machine
+
+    # Each quadrupole family has one independent supply current.
+    - quad_supplies:
+        kind: Controller
+        control_type: ABSOLUTE
+        variables: {f_current: 1.0, d_current: 1.0}
+        controls:
+          - {parameter: qf1>MagneticMultipoleP.Kn1, expression: 0.9*f_current}
+          - {parameter: qf2>MagneticMultipoleP.Kn1, expression: 0.9*f_current}
+          - {parameter: qd1>MagneticMultipoleP.Kn1, expression: -0.9*d_current}
+          - {parameter: qd2>MagneticMultipoleP.Kn1, expression: -0.9*d_current}
+
+    - h_corrector_supplies:
+        kind: Controller
+        control_type: ABSOLUTE
+        variables: {f1_current: 0, d1_current: 0, f2_current: 0, d2_current: 0}
+        controls:
+          - {parameter: cor_f1>MagneticMultipoleP.Bn0, expression: 0.001*f1_current}
+          - {parameter: cor_d1>MagneticMultipoleP.Bn0, expression: 0.001*d1_current}
+          - {parameter: cor_f2>MagneticMultipoleP.Bn0, expression: 0.001*f2_current}
+          - {parameter: cor_d2>MagneticMultipoleP.Bn0, expression: 0.001*d2_current}
+
+    - v_corrector_supplies:
+        kind: Controller
+        control_type: ABSOLUTE
+        variables: {f1_current: 0, d1_current: 0, f2_current: 0, d2_current: 0}
+        controls:
+          - {parameter: cor_f1>MagneticMultipoleP.Bs0, expression: 0.001*f1_current}
+          - {parameter: cor_d1>MagneticMultipoleP.Bs0, expression: 0.001*d1_current}
+          - {parameter: cor_f2>MagneticMultipoleP.Bs0, expression: 0.001*f2_current}
+          - {parameter: cor_d2>MagneticMultipoleP.Bs0, expression: 0.001*d2_current}
